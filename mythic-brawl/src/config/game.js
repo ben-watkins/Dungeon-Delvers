@@ -295,6 +295,7 @@ export const DUNGEONS = {
     name: 'The Deadmines',
     timeLimit: 900,
     keystoneBase: 2,
+    projectilePrefix: 'deadmines',
     environment: {
       bgLayers: [
         { key: 'dungeon_bg', scrollFactor: 0.5, y: 0, height: 160 },
@@ -343,6 +344,7 @@ export const DUNGEONS = {
     name: 'Mythic Grove',
     timeLimit: 1200,
     keystoneBase: 4,
+    projectilePrefix: 'mythic',
     environment: {
       bgLayers: [
         { key: 'mythic_bg_far', scrollFactor: 0.2, y: 0, height: 200 },
@@ -373,6 +375,7 @@ export const DUNGEONS = {
     name: 'Frozen Crypt',
     timeLimit: 1000,
     keystoneBase: 5,
+    projectilePrefix: 'frozen',
     environment: {
       bgLayers: [
         { key: 'frozen_bg_far', scrollFactor: 0.2, y: 0, height: 200 },
@@ -398,6 +401,7 @@ export const DUNGEONS = {
     name: 'Infernal Forge',
     timeLimit: 1100,
     keystoneBase: 7,
+    projectilePrefix: 'forge',
     environment: {
       bgLayers: [
         { key: 'forge_bg_far', scrollFactor: 0.2, y: 0, height: 200 },
@@ -424,6 +428,7 @@ export const DUNGEONS = {
     name: 'Sunken Temple',
     timeLimit: 1200,
     keystoneBase: 9,
+    projectilePrefix: 'temple',
     environment: {
       bgLayers: [
         { key: 'temple_bg_far', scrollFactor: 0.2, y: 0, height: 200 },
@@ -606,56 +611,75 @@ export const ENEMIES = {
  * Affixes modify dungeon behavior at higher keystone levels.
  */
 export const AFFIXES = {
-  fortified: {
-    name: 'Fortified',
-    description: 'Non-boss enemies have increased health and damage.',
-    hpMultiplier: 1.2,
-    damageMultiplier: 1.15,
-    appliesTo: ['trash', 'elite'],
-  },
-  tyrannical: {
-    name: 'Tyrannical',
-    description: 'Boss enemies have increased health and damage.',
-    hpMultiplier: 1.3,
-    damageMultiplier: 1.2,
-    appliesTo: ['boss'],
-  },
-  bursting: {
-    name: 'Bursting',
-    description: 'When enemies die, they explode dealing AoE damage after 2 seconds.',
-    delay: 2000,
-    damage: 15,
-    radius: 40,
+  // TIER 1 (Keystone 1-5)
+  raging: {
+    name: 'Raging',
+    tier: 1,
+    hpThreshold: 0.3,
+    damageBoost: 0.5,
+    description: 'Enemies below 30% HP deal +50% damage.',
   },
   bolstering: {
     name: 'Bolstering',
-    description: 'When an enemy dies, nearby enemies gain 10% increased damage and size.',
+    tier: 1,
     damageBoost: 0.10,
-    scaleBoost: 0.05,
-    radius: 60,
+    hpBoost: 0.10,
+    radius: 200,
+    description: 'When an enemy dies, nearby enemies gain +10% HP and damage.',
   },
+
+  // TIER 2 (Keystone 5-10)
   sanguine: {
     name: 'Sanguine',
-    description: 'Enemies leave a healing pool on death that heals other enemies.',
-    healPerSecond: 8,
-    duration: 6000,
-    radius: 24,
+    tier: 2,
+    poolRadius: 40,
+    poolDuration: 8000,
+    enemyHealPercent: 0.03,
+    playerDamagePercent: 0.02,
+    description: 'Dead enemies drop a blood pool that heals enemies and damages players.',
   },
-  explosive: {
-    name: 'Explosive',
-    description: 'Enemies periodically spawn explosive orbs that must be killed.',
-    spawnInterval: 8000,
-    orbHp: 10,
-    orbDamage: 30,
-    orbFuseTime: 4000,
+  volcanic: {
+    name: 'Volcanic',
+    tier: 2,
+    spawnInterval: 4000,
+    telegraphDuration: 1000,
+    damage: 0.20,
+    radius: 40,
+    description: 'Volcanic plumes erupt under random players during combat.',
   },
+
+  // TIER 3 (Keystone 10-20)
   necrotic: {
     name: 'Necrotic',
-    description: 'Enemy melee hits stack a debuff reducing healing received by 3% per stack.',
-    healingReductionPerStack: 0.03,
-    maxStacks: 30,
-    duration: 6000,
+    tier: 3,
+    healReductionPerStack: 0.05,
+    maxStacks: 20,
+    decayDelay: 3000,
+    decayRate: 1000,
+    description: 'Enemy melee attacks reduce healing received by 5% per stack.',
   },
+  bursting: {
+    name: 'Bursting',
+    tier: 3,
+    damagePercent: 0.02,
+    burstDuration: 4000,
+    description: 'Each enemy death applies Burst to all players (2% HP/sec for 4s, stacks).',
+  },
+
+  // TIER 4 (Keystone 20-30)
+  afflicted: {
+    name: 'Afflicted',
+    tier: 4,
+    spawnInterval: 12000,
+    dispelWindow: 8000,
+    stunDuration: 4000,
+    description: 'Random player gets cursed. Dispel or heal to full within 8s or be stunned.',
+  },
+};
+
+export const KEYSTONE_SCALING = {
+  damagePerLevel: 0.10,
+  hpPerLevel: 0.08,
 };
 
 /**

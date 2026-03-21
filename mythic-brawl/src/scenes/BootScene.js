@@ -104,6 +104,29 @@ export class BootScene extends Phaser.Scene {
     this.load.spritesheet('bossroom_props', 'assets/bossroom_props.png', { frameWidth: 32, frameHeight: 64 });
 
     // =====================================================
+    // AFFIX VISUAL EFFECTS
+    // =====================================================
+    this.load.spritesheet('raging_fx', 'assets/ui/raging_fx.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('bolstering_fx', 'assets/ui/bolstering_fx.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('sanguine_fx', 'assets/ui/sanguine_fx.png', { frameWidth: 80, frameHeight: 32 });
+    this.load.spritesheet('volcanic_fx', 'assets/ui/volcanic_fx.png', { frameWidth: 64, frameHeight: 64 });
+    this.load.spritesheet('necrotic_fx', 'assets/ui/necrotic_fx.png', { frameWidth: 32, frameHeight: 32 });
+    this.load.spritesheet('bursting_fx', 'assets/ui/bursting_fx.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('afflicted_fx', 'assets/ui/afflicted_fx.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('affix_icons', 'assets/ui/affix_icons.png', { frameWidth: 24, frameHeight: 24 });
+
+    // =====================================================
+    // PROJECTILES — per dungeon
+    // =====================================================
+    const dungeonPrefixes = ['deadmines', 'mythic', 'frozen', 'forge', 'temple'];
+    for (const prefix of dungeonPrefixes) {
+      this.load.spritesheet(`${prefix}_proj_small`, `assets/projectiles/${prefix}_proj_small.png`, { frameWidth: 16, frameHeight: 16 });
+      this.load.spritesheet(`${prefix}_proj_med`, `assets/projectiles/${prefix}_proj_med.png`, { frameWidth: 24, frameHeight: 24 });
+      this.load.spritesheet(`${prefix}_proj_large`, `assets/projectiles/${prefix}_proj_large.png`, { frameWidth: 32, frameHeight: 32 });
+      this.load.spritesheet(`${prefix}_impact`, `assets/projectiles/${prefix}_impact.png`, { frameWidth: 32, frameHeight: 32 });
+    }
+
+    // =====================================================
     // DUNGEON ENVIRONMENT ART — Frozen Crypt
     // =====================================================
     this.load.image('frozen_bg_far', 'assets/frozen_bg_far.png');
@@ -135,9 +158,11 @@ export class BootScene extends Phaser.Scene {
     // Generate UI helper textures
     this.generateUITextures();
     this.generateVFXTextures();
+    this.createAffixAnimations();
 
     // Define animations
     this.createAnimations();
+    this.createProjectileAnimations();
 
     // Move to main menu
     this.scene.start('MainMenuScene');
@@ -212,6 +237,34 @@ export class BootScene extends Phaser.Scene {
     bl2ctx.fillStyle = '#aa1111';
     bl2ctx.fillRect(0, 0, 2, 2);
     bl2.refresh();
+  }
+
+  createAffixAnimations() {
+    // Raging — looping red pulse
+    this.anims.create({ key: 'raging_fx_anim', frames: this.anims.generateFrameNumbers('raging_fx', { start: 0, end: 7 }), frameRate: 10, repeat: -1 });
+    // Bolstering — play once
+    this.anims.create({ key: 'bolstering_fx_anim', frames: this.anims.generateFrameNumbers('bolstering_fx', { start: 0, end: 7 }), frameRate: 10, repeat: 0 });
+    // Sanguine — looping pool
+    this.anims.create({ key: 'sanguine_fx_anim', frames: this.anims.generateFrameNumbers('sanguine_fx', { start: 0, end: 7 }), frameRate: 8, repeat: -1 });
+    // Volcanic — telegraph (frames 0-3), eruption (4-7), fade (8-11)
+    this.anims.create({ key: 'volcanic_telegraph_anim', frames: this.anims.generateFrameNumbers('volcanic_fx', { start: 0, end: 3 }), frameRate: 4, repeat: 0 });
+    this.anims.create({ key: 'volcanic_eruption_anim', frames: this.anims.generateFrameNumbers('volcanic_fx', { start: 4, end: 11 }), frameRate: 12, repeat: 0 });
+    // Necrotic — looping tendrils
+    this.anims.create({ key: 'necrotic_fx_anim', frames: this.anims.generateFrameNumbers('necrotic_fx', { start: 0, end: 7 }), frameRate: 8, repeat: -1 });
+    // Bursting — play once per tick
+    this.anims.create({ key: 'bursting_fx_anim', frames: this.anims.generateFrameNumbers('bursting_fx', { start: 0, end: 7 }), frameRate: 10, repeat: 0 });
+    // Afflicted — looping with urgency
+    this.anims.create({ key: 'afflicted_fx_anim', frames: this.anims.generateFrameNumbers('afflicted_fx', { start: 0, end: 9 }), frameRate: 8, repeat: -1 });
+  }
+
+  createProjectileAnimations() {
+    const dungeonPrefixes = ['deadmines', 'mythic', 'frozen', 'forge', 'temple'];
+    for (const prefix of dungeonPrefixes) {
+      this.anims.create({ key: `${prefix}_proj_small_anim`, frames: this.anims.generateFrameNumbers(`${prefix}_proj_small`, { start: 0, end: 7 }), frameRate: 12, repeat: -1 });
+      this.anims.create({ key: `${prefix}_proj_med_anim`, frames: this.anims.generateFrameNumbers(`${prefix}_proj_med`, { start: 0, end: 7 }), frameRate: 12, repeat: -1 });
+      this.anims.create({ key: `${prefix}_proj_large_anim`, frames: this.anims.generateFrameNumbers(`${prefix}_proj_large`, { start: 0, end: 7 }), frameRate: 12, repeat: -1 });
+      this.anims.create({ key: `${prefix}_impact_anim`, frames: this.anims.generateFrameNumbers(`${prefix}_impact`, { start: 0, end: 5 }), frameRate: 15, repeat: 0 });
+    }
   }
 
   /**

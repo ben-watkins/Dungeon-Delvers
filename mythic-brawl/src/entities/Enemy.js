@@ -135,9 +135,17 @@ export class Enemy extends Phaser.GameObjects.Container {
 
           const dist = this.distToTarget();
 
-          if (dist <= this.attackRange && this.attackTimer <= 0) {
-            this.fsm.transition('attack');
-            return;
+          if (this.attackTimer <= 0) {
+            // 25% chance ranged attack when at medium distance
+            if (dist > 60 && dist <= 150 && Math.random() < 0.25) {
+              this.fireRangedAttack();
+              this.attackTimer = this.attackCooldown;
+              return;
+            }
+            if (dist <= this.attackRange) {
+              this.fsm.transition('attack');
+              return;
+            }
           }
 
           // Move toward target
@@ -325,6 +333,23 @@ export class Enemy extends Phaser.GameObjects.Container {
         transitions: {},
       },
     };
+  }
+
+  fireRangedAttack() {
+    // Play attack animation briefly
+    this.sprite.play(`${this.enemyKey}_atk1`, true);
+
+    // Face target
+    if (this.target) {
+      this.facingRight = this.target.x > this.x;
+      this.sprite.setFlipX(!this.facingRight);
+    }
+
+    // Emit ranged attack event for ProjectileSystem
+    this.scene.events.emit('enemyRangedAttack', {
+      enemy: this,
+      target: this.target,
+    });
   }
 
   findTarget() {

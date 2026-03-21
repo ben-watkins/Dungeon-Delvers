@@ -23,6 +23,7 @@ import { Enemy } from '../entities/Enemy.js';
 import { AICompanion } from '../entities/AICompanion.js';
 import { CombatSystem } from '../systems/CombatSystem.js';
 import { VFXSystem } from '../systems/VFXSystem.js';
+import { ProjectileSystem } from '../systems/ProjectileSystem.js';
 import { AffixManager } from '../systems/AffixManager.js';
 import { DungeonTimer } from '../systems/DungeonTimer.js';
 import { sortGroup } from '../utils/DepthSort.js';
@@ -57,6 +58,7 @@ export class DungeonScene extends Phaser.Scene {
     // Systems
     this.combatSystem = new CombatSystem(this);
     this.vfxSystem = new VFXSystem(this);
+    this.projectileSystem = new ProjectileSystem(this, this.dungeonKey);
     this.affixManager = new AffixManager(this, this.keystoneLevel);
     this.dungeonTimer = new DungeonTimer(this, dungeon.timeLimit);
 
@@ -471,6 +473,7 @@ export class DungeonScene extends Phaser.Scene {
     // Systems
     this.dungeonTimer.update(delta);
     this.affixManager.update(delta);
+    this.projectileSystem.update(delta);
 
     // Depth sort all entities
     sortGroup(this.allEntities);

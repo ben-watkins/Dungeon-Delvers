@@ -65,12 +65,70 @@ export class BootScene extends Phaser.Scene {
     this.load.spritesheet('hellknight', 'assets/sprites/hellknight_side_right.png', { frameWidth: 48, frameHeight: 48 });
     this.load.spritesheet('pitlord', 'assets/sprites/pitlord_side_right.png', { frameWidth: 64, frameHeight: 64 });
 
+    // Frozen Crypt enemies
+    this.load.spritesheet('frozen_wraith', 'assets/sprites/frozen_wraith.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('frozen_golem', 'assets/sprites/frozen_golem.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('frozen_giant', 'assets/sprites/frozen_giant.png', { frameWidth: 64, frameHeight: 64 });
+
+    // Infernal Forge enemies
+    this.load.spritesheet('forge_imp', 'assets/sprites/forge_imp.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('forge_golem', 'assets/sprites/forge_golem.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('forge_infernal', 'assets/sprites/forge_infernal.png', { frameWidth: 64, frameHeight: 64 });
+
+    // Sunken Temple enemies
+    this.load.spritesheet('temple_murloc', 'assets/sprites/temple_murloc.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('temple_naga', 'assets/sprites/temple_naga.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('temple_horror', 'assets/sprites/temple_horror.png', { frameWidth: 64, frameHeight: 64 });
+
     // =====================================================
-    // DUNGEON ENVIRONMENT ART
+    // DUNGEON ENVIRONMENT ART — The Deadmines
     // =====================================================
     this.load.image('dungeon_bg', 'assets/dungeon_bg.png');
     this.load.spritesheet('dungeon_tiles', 'assets/dungeon_tiles.png', { frameWidth: 16, frameHeight: 16 });
     this.load.spritesheet('dungeon_props', 'assets/dungeon_props.png', { frameWidth: 32, frameHeight: 64 });
+
+    // =====================================================
+    // DUNGEON ENVIRONMENT ART — Mythic Grove (3-layer parallax)
+    // =====================================================
+    this.load.image('mythic_bg_far', 'assets/mythic_bg_far.png');
+    this.load.image('mythic_bg_mid', 'assets/mythic_bg_mid.png');
+    this.load.image('mythic_bg_near', 'assets/mythic_bg_near.png');
+    this.load.spritesheet('mythic_tiles', 'assets/mythic_tiles.png', { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('mythic_props', 'assets/mythic_props.png', { frameWidth: 32, frameHeight: 64 });
+
+    // =====================================================
+    // BOSS ROOM ENVIRONMENT ART
+    // =====================================================
+    this.load.image('bossroom_bg', 'assets/bossroom_bg.png');
+    this.load.spritesheet('bossroom_tiles', 'assets/bossroom_tiles.png', { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('bossroom_props', 'assets/bossroom_props.png', { frameWidth: 32, frameHeight: 64 });
+
+    // =====================================================
+    // DUNGEON ENVIRONMENT ART — Frozen Crypt
+    // =====================================================
+    this.load.image('frozen_bg_far', 'assets/frozen_bg_far.png');
+    this.load.image('frozen_bg_mid', 'assets/frozen_bg_mid.png');
+    this.load.image('frozen_bg_near', 'assets/frozen_bg_near.png');
+    this.load.spritesheet('frozen_tiles', 'assets/frozen_tiles.png', { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('frozen_props', 'assets/frozen_props.png', { frameWidth: 32, frameHeight: 64 });
+
+    // =====================================================
+    // DUNGEON ENVIRONMENT ART — Infernal Forge
+    // =====================================================
+    this.load.image('forge_bg_far', 'assets/forge_bg_far.png');
+    this.load.image('forge_bg_mid', 'assets/forge_bg_mid.png');
+    this.load.image('forge_bg_near', 'assets/forge_bg_near.png');
+    this.load.spritesheet('forge_tiles', 'assets/forge_tiles.png', { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('forge_props', 'assets/forge_props.png', { frameWidth: 32, frameHeight: 64 });
+
+    // =====================================================
+    // DUNGEON ENVIRONMENT ART — Sunken Temple
+    // =====================================================
+    this.load.image('temple_bg_far', 'assets/temple_bg_far.png');
+    this.load.image('temple_bg_mid', 'assets/temple_bg_mid.png');
+    this.load.image('temple_bg_near', 'assets/temple_bg_near.png');
+    this.load.spritesheet('temple_tiles', 'assets/temple_tiles.png', { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('temple_props', 'assets/temple_props.png', { frameWidth: 32, frameHeight: 64 });
   }
 
   create() {
@@ -162,7 +220,13 @@ export class BootScene extends Phaser.Scene {
    */
   createAnimations() {
     const FRAMES_PER_ROW = 14;
-    const characters = ['warrior', 'priest', 'rogue', 'mage', 'imp', 'hellknight', 'pitlord'];
+    const characters = [
+      'warrior', 'priest', 'rogue', 'mage',
+      'imp', 'hellknight', 'pitlord',
+      'frozen_wraith', 'frozen_golem', 'frozen_giant',
+      'forge_imp', 'forge_golem', 'forge_infernal',
+      'temple_murloc', 'temple_naga', 'temple_horror',
+    ];
 
     // Helper: generate frame numbers for a row
     const rowFrames = (row, count) => {

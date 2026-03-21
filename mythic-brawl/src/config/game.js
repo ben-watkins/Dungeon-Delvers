@@ -293,8 +293,18 @@ export const ATTACKS = {
 export const DUNGEONS = {
   deadmines: {
     name: 'The Deadmines',
-    timeLimit: 900,          // seconds
-    keystoneBase: 2,         // base keystone level
+    timeLimit: 900,
+    keystoneBase: 2,
+    environment: {
+      bgLayers: [
+        { key: 'dungeon_bg', scrollFactor: 0.5, y: 0, height: 160 },
+      ],
+      tileSheet: 'dungeon_tiles',
+      tileRows: [0, 1, 2, 3],       // floor tile frames from row 0
+      propSheet: 'dungeon_props',
+      wallProps: [0, 4, 9],          // pillar, torch stand, candelabra
+      floorProps: [1, 2, 1],         // barrel, bones, barrel
+    },
     rooms: [
       { type: 'hallway', enemies: ['imp', 'imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight'] },
       { type: 'arena', enemies: ['imp', 'imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight', 'pitlord', 'pitlord'] },
@@ -303,6 +313,137 @@ export const DUNGEONS = {
       { type: 'hallway', enemies: ['imp', 'imp', 'imp', 'hellknight'] },
       { type: 'arena', enemies: ['imp', 'imp', 'hellknight', 'hellknight', 'hellknight'] },
       { type: 'boss', boss: 'pitlord' },
+      {
+        type: 'bossArena',
+        width: 1440,  // 3x normal screen width
+        environment: {
+          bgKey: 'bossroom_bg',
+          tileSheet: 'bossroom_tiles',
+          propSheet: 'bossroom_props',
+          // Tile frames: 0-3=dark stone, 4-7=fire grate, 8-11=blood channels, 12-15=blood-stained stone
+          // Row 1: 16-19=arena edge, 20-23=more variants
+          floorCenter: [4, 5, 6, 7],       // fire grate tiles in center
+          floorRadial: [8, 9, 10, 11],     // blood channels radiating out
+          floorEdge: [12, 13, 14, 15],     // blood-stained stone at edges
+          arenaEdge: [16, 17, 18, 19],     // arena boundary tiles
+          // Props: 0=fire brazier, 1=meat hook, 2=skull pile, 3=weapon rack, 4=blood pool,
+          //        5=painting, 6=iron maiden, 7=hanging chains, 8=more chains, 9=demonic rune
+          brazier: 0,
+          skullPile: 2,
+          weaponRack: 3,
+          hangingChains: 7,
+          meatHook: 1,
+          runeCircle: 9,
+        },
+      },
+    ],
+  },
+
+  mythic_grove: {
+    name: 'Mythic Grove',
+    timeLimit: 1200,
+    keystoneBase: 4,
+    environment: {
+      bgLayers: [
+        { key: 'mythic_bg_far', scrollFactor: 0.2, y: 0, height: 200 },
+        { key: 'mythic_bg_mid', scrollFactor: 0.5, y: 0, height: 200 },
+        { key: 'mythic_bg_near', scrollFactor: 1.2, y: 0, height: 200, foreground: true },
+      ],
+      tileSheet: 'mythic_tiles',
+      tileRows: [0, 1, 2, 3],       // mossy stone + root tiles from row 0
+      waterTileRows: [16, 17, 18],   // glowing pool tiles from row 1 (frames 16+)
+      waterChance: 0.08,             // % of floor tiles replaced with water
+      propSheet: 'mythic_props',
+      wallProps: [0, 1, 4],          // moss pillar, crystal cluster, crystal
+      floorProps: [2, 3, 6],         // mushrooms, glowing pool, dark mushrooms
+      transitionProp: 8,             // hanging vine curtain at room transitions
+    },
+    rooms: [
+      { type: 'hallway', enemies: ['imp', 'imp', 'imp'] },
+      { type: 'arena', enemies: ['imp', 'imp', 'imp', 'imp', 'hellknight', 'hellknight'] },
+      { type: 'hallway', enemies: ['imp', 'hellknight', 'hellknight'] },
+      { type: 'arena', enemies: ['hellknight', 'hellknight', 'hellknight', 'imp', 'imp'] },
+      { type: 'hallway', enemies: ['imp', 'imp', 'hellknight'] },
+      { type: 'arena', enemies: ['imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight'] },
+      { type: 'boss', boss: 'pitlord' },
+    ],
+  },
+
+  frozen_crypt: {
+    name: 'Frozen Crypt',
+    timeLimit: 1000,
+    keystoneBase: 5,
+    environment: {
+      bgLayers: [
+        { key: 'frozen_bg_far', scrollFactor: 0.2, y: 0, height: 200 },
+        { key: 'frozen_bg_mid', scrollFactor: 0.5, y: 0, height: 200 },
+        { key: 'frozen_bg_near', scrollFactor: 1.2, y: 0, height: 200, foreground: true },
+      ],
+      tileSheet: 'frozen_tiles',
+      tileRows: [0, 1, 2, 3],
+      propSheet: 'frozen_props',
+      wallProps: [0, 1, 4],
+      floorProps: [2, 3, 6],
+    },
+    rooms: [
+      { type: 'hallway', enemies: ['frozen_wraith', 'frozen_wraith', 'frozen_wraith'] },
+      { type: 'arena', enemies: ['frozen_wraith', 'frozen_wraith', 'frozen_wraith', 'frozen_wraith', 'frozen_golem'] },
+      { type: 'hallway', enemies: ['frozen_wraith', 'frozen_golem'] },
+      { type: 'arena', enemies: ['frozen_wraith', 'frozen_wraith', 'frozen_golem', 'frozen_golem', 'frozen_golem'] },
+      { type: 'boss', boss: 'frozen_giant' },
+    ],
+  },
+
+  infernal_forge: {
+    name: 'Infernal Forge',
+    timeLimit: 1100,
+    keystoneBase: 7,
+    environment: {
+      bgLayers: [
+        { key: 'forge_bg_far', scrollFactor: 0.2, y: 0, height: 200 },
+        { key: 'forge_bg_mid', scrollFactor: 0.5, y: 0, height: 200 },
+        { key: 'forge_bg_near', scrollFactor: 1.2, y: 0, height: 200, foreground: true },
+      ],
+      tileSheet: 'forge_tiles',
+      tileRows: [0, 1, 2, 3],
+      propSheet: 'forge_props',
+      wallProps: [0, 1, 4],
+      floorProps: [2, 3, 6],
+    },
+    rooms: [
+      { type: 'hallway', enemies: ['forge_imp', 'forge_imp', 'forge_imp', 'forge_imp'] },
+      { type: 'arena', enemies: ['forge_imp', 'forge_imp', 'forge_imp', 'forge_golem', 'forge_golem'] },
+      { type: 'hallway', enemies: ['forge_imp', 'forge_imp', 'forge_golem'] },
+      { type: 'arena', enemies: ['forge_imp', 'forge_imp', 'forge_golem', 'forge_golem', 'forge_golem'] },
+      { type: 'hallway', enemies: ['forge_golem', 'forge_golem'] },
+      { type: 'boss', boss: 'forge_infernal' },
+    ],
+  },
+
+  sunken_temple: {
+    name: 'Sunken Temple',
+    timeLimit: 1200,
+    keystoneBase: 9,
+    environment: {
+      bgLayers: [
+        { key: 'temple_bg_far', scrollFactor: 0.2, y: 0, height: 200 },
+        { key: 'temple_bg_mid', scrollFactor: 0.5, y: 0, height: 200 },
+        { key: 'temple_bg_near', scrollFactor: 1.2, y: 0, height: 200, foreground: true },
+      ],
+      tileSheet: 'temple_tiles',
+      tileRows: [0, 1, 2, 3],
+      propSheet: 'temple_props',
+      wallProps: [0, 1, 4],
+      floorProps: [2, 3, 6],
+    },
+    rooms: [
+      { type: 'hallway', enemies: ['temple_murloc', 'temple_murloc', 'temple_murloc', 'temple_murloc', 'temple_murloc'] },
+      { type: 'arena', enemies: ['temple_murloc', 'temple_murloc', 'temple_murloc', 'temple_naga', 'temple_naga'] },
+      { type: 'hallway', enemies: ['temple_murloc', 'temple_murloc', 'temple_naga'] },
+      { type: 'arena', enemies: ['temple_murloc', 'temple_murloc', 'temple_naga', 'temple_naga', 'temple_naga'] },
+      { type: 'hallway', enemies: ['temple_naga', 'temple_naga', 'temple_naga'] },
+      { type: 'arena', enemies: ['temple_naga', 'temple_naga', 'temple_naga', 'temple_naga'] },
+      { type: 'boss', boss: 'temple_horror' },
     ],
   },
 };
@@ -346,6 +487,117 @@ export const ENEMIES = {
     aggroRange: 120,
     attackRange: 28,
     attackCooldown: 2200,
+  },
+
+  // --- FROZEN CRYPT ---
+  frozen_wraith: {
+    name: 'Frozen Wraith',
+    type: 'trash',
+    size: 'small',
+    stats: { hp: 25, speed: 55, power: 0.06, defense: 0.3 },
+    attacks: ['imp_scratch'],
+    aggroRange: 90,
+    attackRange: 16,
+    attackCooldown: 800,
+  },
+  frozen_golem: {
+    name: 'Frozen Golem',
+    type: 'elite',
+    size: 'medium',
+    stats: { hp: 150, speed: 20, power: 0.1, defense: 1.5 },
+    attacks: ['hellknight_slash'],
+    aggroRange: 80,
+    attackRange: 22,
+    attackCooldown: 2500,
+  },
+  frozen_giant: {
+    name: 'Frozen Giant',
+    type: 'boss',
+    size: 'large',
+    frameSize: 64,
+    stats: { hp: 600, speed: 15, power: 0.12, defense: 1.8 },
+    attacks: ['pitlord_cleave', 'pitlord_stomp'],
+    phases: [
+      { hpThreshold: 0.5, attack: 'pitlord_hellfire' },
+      { hpThreshold: 0.2, attack: 'pitlord_enrage' },
+    ],
+    aggroRange: 120,
+    attackRange: 28,
+    attackCooldown: 2800,
+  },
+
+  // --- INFERNAL FORGE ---
+  forge_imp: {
+    name: 'Forge Imp',
+    type: 'trash',
+    size: 'small',
+    stats: { hp: 35, speed: 50, power: 0.07, defense: 0.4 },
+    attacks: ['imp_scratch'],
+    aggroRange: 85,
+    attackRange: 16,
+    attackCooldown: 850,
+  },
+  forge_golem: {
+    name: 'Forge Golem',
+    type: 'elite',
+    size: 'medium',
+    stats: { hp: 180, speed: 18, power: 0.12, defense: 1.6 },
+    attacks: ['hellknight_slash', 'hellknight_charge'],
+    aggroRange: 90,
+    attackRange: 24,
+    attackCooldown: 2200,
+  },
+  forge_infernal: {
+    name: 'Forge Infernal',
+    type: 'boss',
+    size: 'large',
+    frameSize: 64,
+    stats: { hp: 700, speed: 12, power: 0.15, defense: 2.0 },
+    attacks: ['pitlord_cleave', 'pitlord_stomp'],
+    phases: [
+      { hpThreshold: 0.6, attack: 'pitlord_hellfire' },
+      { hpThreshold: 0.25, attack: 'pitlord_enrage' },
+    ],
+    aggroRange: 130,
+    attackRange: 30,
+    attackCooldown: 2000,
+  },
+
+  // --- SUNKEN TEMPLE ---
+  temple_murloc: {
+    name: 'Temple Murloc',
+    type: 'trash',
+    size: 'small',
+    stats: { hp: 30, speed: 60, power: 0.05, defense: 0.35 },
+    attacks: ['imp_scratch'],
+    aggroRange: 95,
+    attackRange: 14,
+    attackCooldown: 700,
+  },
+  temple_naga: {
+    name: 'Temple Naga',
+    type: 'elite',
+    size: 'medium',
+    stats: { hp: 160, speed: 25, power: 0.11, defense: 1.4 },
+    attacks: ['hellknight_slash', 'hellknight_charge'],
+    aggroRange: 100,
+    attackRange: 22,
+    attackCooldown: 1800,
+  },
+  temple_horror: {
+    name: 'Temple Horror',
+    type: 'boss',
+    size: 'large',
+    frameSize: 64,
+    stats: { hp: 800, speed: 10, power: 0.18, defense: 2.2 },
+    attacks: ['pitlord_cleave', 'pitlord_stomp'],
+    phases: [
+      { hpThreshold: 0.5, attack: 'pitlord_hellfire' },
+      { hpThreshold: 0.2, attack: 'pitlord_enrage' },
+    ],
+    aggroRange: 140,
+    attackRange: 32,
+    attackCooldown: 2400,
   },
 };
 

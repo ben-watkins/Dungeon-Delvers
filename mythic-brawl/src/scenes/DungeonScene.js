@@ -125,21 +125,36 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   createBackground() {
-    // World width based on number of rooms
-    this.worldWidth = 480 * 4;  // 4 screens wide for now
+    const dungeon = DUNGEONS[this.dungeonKey];
+    const env = dungeon.environment;
 
-    // 1. Parallax background — dungeon_bg (480×160) tiles horizontally, scrolls at half camera speed
-    this.bgLayer = this.add.tileSprite(
-      GAME_CONFIG.width / 2,
-      GAME_CONFIG.groundMinY / 2,
-      GAME_CONFIG.width,
-      GAME_CONFIG.groundMinY,
-      'dungeon_bg'
-    );
-    this.bgLayer.setScrollFactor(0);
-    this.bgLayer.setDepth(GAME_CONFIG.layers.background);
+    // World width — calculate from rooms, boss arenas are wider
+    let totalWidth = 0;
+    for (const room of dungeon.rooms) {
+      totalWidth += room.width || 480;
+    }
+    this.worldWidth = Math.max(totalWidth, 480 * 4);
 
-    // 2. Tiled ground plane — stone floor from groundMinY to screen bottom
+    // 1. Parallax background layers — data-driven from dungeon config
+    this.bgLayers = [];
+    for (const layer of env.bgLayers) {
+      if (layer.foreground) continue; // Foreground layers added after props
+
+      const bgHeight = layer.height || GAME_CONFIG.groundMinY;
+      const bgY = layer.y || 0;
+      const bg = this.add.tileSprite(
+        GAME_CONFIG.width / 2,
+        bgY + bgHeight / 2,
+        GAME_CONFIG.width,
+        bgHeight,
+        layer.key
+      );
+      bg.setScrollFactor(0);
+      bg.setDepth(GAME_CONFIG.layers.background + this.bgLayers.length);
+      this.bgLayers.push({ sprite: bg, scrollFactor: layer.scrollFactor });
+    }
+
+    // 2. Tiled ground plane
     const groundY = GAME_CONFIG.groundMinY;
     const groundH = GAME_CONFIG.height - groundY;
     const tileSize = GAME_CONFIG.tileSize;
@@ -148,53 +163,105 @@ export class DungeonScene extends Phaser.Scene {
 
     const groundRT = this.add.renderTexture(0, groundY, this.worldWidth, rows * tileSize);
     groundRT.setOrigin(0, 0);
-    groundRT.setDepth(GAME_CONFIG.layers.background + 1);
+    groundRT.setDepth(GAME_CONFIG.layers.background + 10);
 
-    // Use stone floor tiles from row 0 of dungeon_tiles
+    const tileFrames = env.tileRows || [0, 1, 2, 3];
+    const waterFrames = env.waterTileRows || null;
+    const waterChance = env.waterChance || 0;
+
     for (let x = 0; x < cols; x++) {
       for (let y = 0; y < rows; y++) {
-        // Mostly tile 0, with occasional variants for visual interest
-        const frame = Math.random() < 0.75 ? 0 : Phaser.Math.Between(1, 3);
-        groundRT.drawFrame('dungeon_tiles', frame, x * tileSize, y * tileSize);
+        let frame;
+        if (waterFrames && Math.random() < waterChance) {
+          frame = waterFrames[Phaser.Math.Between(0, waterFrames.length - 1)];
+        } else {
+          frame = Math.random() < 0.75
+            ? tileFrames[0]
+            : tileFrames[Phaser.Math.Between(1, tileFrames.length - 1)];
+        }
+        groundRT.drawFrame(env.tileSheet, frame, x * tileSize, y * tileSize);
       }
     }
 
-    // 3. Randomly placed props along the level
-    this.placeProps();
+    // 3. Props
+    this.placeProps(env);
+
+    // 4. Foreground parallax layers (render in front of sprites)
+    for (const layer of env.bgLayers) {
+      if (!layer.foreground) continue;
+
+      const bgHeight = layer.height || GAME_CONFIG.groundMinY;
+      const bgY = layer.y || 0;
+      const fg = this.add.tileSprite(
+        GAME_CONFIG.width / 2,
+        bgY + bgHeight / 2,
+        GAME_CONFIG.width,
+        bgHeight,
+        layer.key
+      );
+      fg.setScrollFactor(0);
+      fg.setAlpha(0.7);
+      fg.setDepth(GAME_CONFIG.layers.foregroundDecor + 50);
+      this.bgLayers.push({ sprite: fg, scrollFactor: layer.scrollFactor });
+    }
   }
 
-  placeProps() {
-    // Prop frame indices in dungeon_props (32×64 cells, row 0 only has content)
-    // 0=pillar, 1=barrel, 2=bones, 3=cage, 4=torch stand, 5=rug, 6=frame, 7=torch, 9=candelabra
-    const WALL_PROPS = [0, 4, 9];   // pillar, torch stand, candelabra
-    const FLOOR_PROPS = [1, 2, 1];  // barrel, bones, barrel (weighted)
+  placeProps(env) {
+    const propSheet = env.propSheet;
+    const wallProps = env.wallProps || [];
+    const floorProps = env.floorProps || [];
+    const transitionProp = env.transitionProp;
 
-    // Wall props — spaced along the back wall behind the walkable area
+    // Wall props — spaced along the back wall
     for (let x = 60; x < this.worldWidth - 60; x += Phaser.Math.Between(70, 120)) {
-      const frame = WALL_PROPS[Phaser.Math.Between(0, WALL_PROPS.length - 1)];
-      const prop = this.add.image(x, GAME_CONFIG.groundMinY, 'dungeon_props', frame);
+      const frame = wallProps[Phaser.Math.Between(0, wallProps.length - 1)];
+      const prop = this.add.image(x, GAME_CONFIG.groundMinY, propSheet, frame);
       prop.setOrigin(0.5, 1);
       prop.setDepth(GAME_CONFIG.layers.groundDecor);
     }
 
-    // Floor props — scattered across the walkable ground plane
+    // Floor props — scattered across the walkable area
     for (let x = 100; x < this.worldWidth - 60; x += Phaser.Math.Between(90, 200)) {
-      const frame = FLOOR_PROPS[Phaser.Math.Between(0, FLOOR_PROPS.length - 1)];
+      const frame = floorProps[Phaser.Math.Between(0, floorProps.length - 1)];
       const propY = Phaser.Math.Between(GAME_CONFIG.groundMinY + 15, GAME_CONFIG.groundMaxY - 10);
       const prop = this.add.image(
         x + Phaser.Math.Between(-20, 20),
         propY,
-        'dungeon_props',
+        propSheet,
         frame
       );
       prop.setOrigin(0.5, 1);
-      // Same depth formula as entities so props interleave with characters by Y position
       prop.setDepth(GAME_CONFIG.layers.entities + propY);
+    }
+
+    // Room transition props (e.g. hanging vine curtain) — placed at screen boundaries
+    if (transitionProp !== undefined) {
+      const dungeon = DUNGEONS[this.dungeonKey];
+      for (let r = 1; r < dungeon.rooms.length; r++) {
+        const tx = 480 * r;
+        const prop = this.add.image(tx, GAME_CONFIG.groundMinY + 20, propSheet, transitionProp);
+        prop.setOrigin(0.5, 1);
+        prop.setDepth(GAME_CONFIG.layers.foregroundDecor + 10);
+      }
     }
   }
 
   spawnRoom(roomDef) {
     if (!roomDef) return;
+
+    // Boss arena — special wide room with custom environment
+    if (roomDef.type === 'bossArena') {
+      this.createBossArena(roomDef);
+      this.roomLocked = true;
+
+      // Lock camera to the arena bounds
+      const arenaX = this.bossArenaX;
+      const arenaW = roomDef.width;
+      this.cameras.main.stopFollow();
+      this.cameras.main.setBounds(arenaX, 0, arenaW, GAME_CONFIG.height);
+      this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
+      return;
+    }
 
     const spawnX = this.player.x + 120;
 
@@ -223,7 +290,118 @@ export class DungeonScene extends Phaser.Scene {
     // Lock camera if arena room
     if (roomDef.type === 'arena' || roomDef.type === 'boss') {
       this.roomLocked = true;
-      // TODO: Lock camera scroll boundaries to current screen
+    }
+  }
+
+  /**
+   * Build the Pit Lord boss arena — wide circular room with custom tiles and props.
+   */
+  createBossArena(roomDef) {
+    const env = roomDef.environment;
+    const arenaW = roomDef.width;
+    // Place arena at the end of the current world
+    const arenaX = this.worldWidth - arenaW;
+    this.bossArenaX = arenaX;
+    const arenaCenterX = arenaX + arenaW / 2;
+    const arenaCenterY = (GAME_CONFIG.groundMinY + GAME_CONFIG.groundMaxY) / 2;
+
+    // Boss arena background — parallax behind everything
+    const arenaBg = this.add.tileSprite(
+      GAME_CONFIG.width / 2, 100,
+      GAME_CONFIG.width, 200,
+      env.bgKey
+    );
+    arenaBg.setScrollFactor(0);
+    arenaBg.setDepth(GAME_CONFIG.layers.background - 1);
+    this.bgLayers.push({ sprite: arenaBg, scrollFactor: 0.3 });
+
+    // Tiled floor — circular pattern
+    const tileSize = GAME_CONFIG.tileSize;
+    const groundY = GAME_CONFIG.groundMinY;
+    const groundH = GAME_CONFIG.height - groundY;
+    const floorCols = Math.ceil(arenaW / tileSize);
+    const floorRows = Math.ceil(groundH / tileSize);
+
+    const arenaRT = this.add.renderTexture(arenaX, groundY, arenaW, floorRows * tileSize);
+    arenaRT.setOrigin(0, 0);
+    arenaRT.setDepth(GAME_CONFIG.layers.background + 11);
+
+    const radiusOuter = arenaW / 2;
+    const radiusInner = radiusOuter * 0.25;
+    const radiusMid = radiusOuter * 0.55;
+
+    for (let tx = 0; tx < floorCols; tx++) {
+      for (let ty = 0; ty < floorRows; ty++) {
+        const px = tx * tileSize + tileSize / 2;
+        const py = ty * tileSize + tileSize / 2;
+        const cx = arenaW / 2;
+        const cy = groundH / 2;
+        const dist = Math.sqrt((px - cx) ** 2 + ((py - cy) * 2) ** 2); // Squash Y for 2.5D
+
+        let frame;
+        if (dist > radiusOuter) {
+          // Arena edge boundary
+          frame = env.arenaEdge[Phaser.Math.Between(0, env.arenaEdge.length - 1)];
+        } else if (dist > radiusMid) {
+          // Blood-stained stone outer ring
+          frame = env.floorEdge[Phaser.Math.Between(0, env.floorEdge.length - 1)];
+        } else if (dist > radiusInner) {
+          // Blood channels radiating outward
+          frame = env.floorRadial[Phaser.Math.Between(0, env.floorRadial.length - 1)];
+        } else {
+          // Fire grate center
+          frame = env.floorCenter[Phaser.Math.Between(0, env.floorCenter.length - 1)];
+        }
+        arenaRT.drawFrame(env.tileSheet, frame, tx * tileSize, ty * tileSize);
+      }
+    }
+
+    // --- PROPS ---
+    const propSheet = env.propSheet;
+
+    // Demonic rune circle at dead center
+    const rune = this.add.image(arenaCenterX, arenaCenterY + 10, propSheet, env.runeCircle);
+    rune.setOrigin(0.5, 0.5);
+    rune.setDepth(GAME_CONFIG.layers.background + 12);
+
+    // Fire braziers at cardinal points
+    const brazierPositions = [
+      { x: arenaCenterX - arenaW * 0.35, y: arenaCenterY },        // west
+      { x: arenaCenterX + arenaW * 0.35, y: arenaCenterY },        // east
+      { x: arenaCenterX, y: GAME_CONFIG.groundMinY + 8 },          // north
+      { x: arenaCenterX, y: GAME_CONFIG.groundMaxY - 4 },          // south
+      // Diagonal positions
+      { x: arenaCenterX - arenaW * 0.25, y: GAME_CONFIG.groundMinY + 12 },
+      { x: arenaCenterX + arenaW * 0.25, y: GAME_CONFIG.groundMinY + 12 },
+      { x: arenaCenterX - arenaW * 0.25, y: GAME_CONFIG.groundMaxY - 8 },
+      { x: arenaCenterX + arenaW * 0.25, y: GAME_CONFIG.groundMaxY - 8 },
+    ];
+    for (const pos of brazierPositions) {
+      const brazier = this.add.image(pos.x, pos.y, propSheet, env.brazier);
+      brazier.setOrigin(0.5, 1);
+      brazier.setDepth(GAME_CONFIG.layers.entities + pos.y);
+    }
+
+    // Skull piles and weapon racks around perimeter
+    const perimeterProps = [env.skullPile, env.weaponRack, env.skullPile, env.weaponRack];
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2;
+      const px = arenaCenterX + Math.cos(angle) * arenaW * 0.38;
+      const py = arenaCenterY + Math.sin(angle) * 30;
+      const pyC = Phaser.Math.Clamp(py, GAME_CONFIG.groundMinY + 5, GAME_CONFIG.groundMaxY - 5);
+      const frame = perimeterProps[i % perimeterProps.length];
+      const prop = this.add.image(px, pyC, propSheet, frame);
+      prop.setOrigin(0.5, 1);
+      prop.setDepth(GAME_CONFIG.layers.entities + pyC);
+    }
+
+    // Hanging chains and meat hooks overhead (behind walkable area)
+    for (let i = 0; i < 8; i++) {
+      const cx = arenaX + 80 + i * (arenaW - 160) / 7;
+      const frame = i % 2 === 0 ? env.hangingChains : env.meatHook;
+      const chain = this.add.image(cx, GAME_CONFIG.groundMinY - 10, propSheet, frame);
+      chain.setOrigin(0.5, 1);
+      chain.setDepth(GAME_CONFIG.layers.groundDecor);
     }
   }
 
@@ -300,8 +478,11 @@ export class DungeonScene extends Phaser.Scene {
     // Tab targeting — cycle and render indicator
     this.updateTabTarget();
 
-    // Parallax background — scroll at half camera speed
-    this.bgLayer.tilePositionX = this.cameras.main.scrollX * 0.5;
+    // Parallax background layers — each scrolls at its own rate
+    const scrollX = this.cameras.main.scrollX;
+    for (const layer of this.bgLayers) {
+      layer.sprite.tilePositionX = scrollX * layer.scrollFactor;
+    }
 
     // Camera bounds (prevent scrolling past world edge)
     this.player.x = Phaser.Math.Clamp(this.player.x, 16, this.worldWidth - 16);

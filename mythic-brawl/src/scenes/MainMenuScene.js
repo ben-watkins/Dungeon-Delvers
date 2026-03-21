@@ -14,6 +14,7 @@
  */
 
 import Phaser from 'phaser';
+import { DUNGEONS } from '../config/game.js';
 
 export class MainMenuScene extends Phaser.Scene {
   constructor() {
@@ -94,16 +95,25 @@ export class MainMenuScene extends Phaser.Scene {
       fontSize: '14px', fontFamily: 'monospace', color: '#404060',
     }).setOrigin(0.5).setResolution(4);
 
+    // Dungeon selector
+    this.dungeonKeys = Object.keys(DUNGEONS);
+    this.dungeonIndex = 0;
+    this.dungeonText = this.add.text(width / 2, height * 0.73, this.getDungeonLabel(), {
+      fontSize: '10px',
+      fontFamily: 'monospace',
+      color: '#60cc80',
+    }).setOrigin(0.5).setResolution(4);
+
     // Keystone level
     this.keystoneLevel = 2;
-    this.keystoneText = this.add.text(width / 2, height * 0.78, `Keystone Level: +${this.keystoneLevel}   [UP/DOWN]`, {
+    this.keystoneText = this.add.text(width / 2, height * 0.81, `Keystone Level: +${this.keystoneLevel}   [UP/DOWN]`, {
       fontSize: '10px',
       fontFamily: 'monospace',
       color: '#d4b040',
     }).setOrigin(0.5).setResolution(4);
 
     // Start prompt
-    this.add.text(width / 2, height * 0.88, 'Press ENTER to start', {
+    this.add.text(width / 2, height * 0.90, 'Press ENTER to start', {
       fontSize: '10px',
       fontFamily: 'monospace',
       color: '#707090',
@@ -128,7 +138,17 @@ export class MainMenuScene extends Phaser.Scene {
       this.updateSelection();
     });
 
-    // Input — keystone level
+    // Input — dungeon selector (W/S)
+    this.input.keyboard.on('keydown-W', () => {
+      this.dungeonIndex = (this.dungeonIndex + 1) % this.dungeonKeys.length;
+      this.dungeonText.setText(this.getDungeonLabel());
+    });
+    this.input.keyboard.on('keydown-S', () => {
+      this.dungeonIndex = (this.dungeonIndex - 1 + this.dungeonKeys.length) % this.dungeonKeys.length;
+      this.dungeonText.setText(this.getDungeonLabel());
+    });
+
+    // Input — keystone level (UP/DOWN arrows)
     this.input.keyboard.on('keydown-UP', () => {
       this.keystoneLevel = Math.min(30, this.keystoneLevel + 1);
       this.keystoneText.setText(`Keystone Level: +${this.keystoneLevel}   [UP/DOWN]`);
@@ -212,10 +232,16 @@ export class MainMenuScene extends Phaser.Scene {
     this.selectedClass = this.classes[this.selectedIndex].key;
   }
 
+  getDungeonLabel() {
+    const key = this.dungeonKeys[this.dungeonIndex];
+    const name = DUNGEONS[key].name;
+    return `Dungeon: ${name}   [W/S]`;
+  }
+
   startDungeon() {
     this.scene.start('DungeonScene', {
       playerClass: this.selectedClass,
-      dungeon: 'deadmines',
+      dungeon: this.dungeonKeys[this.dungeonIndex],
       keystoneLevel: this.keystoneLevel,
     });
   }

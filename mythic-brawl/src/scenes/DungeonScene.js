@@ -100,7 +100,15 @@ export class DungeonScene extends Phaser.Scene {
     // Room system
     this.currentRoomIndex = 0;
     this.roomLocked = false;
-    this.roomEnemiesCleared = false;
+    this.roomCleared = false;
+    this.roomLeftBound = 0;
+    this.roomRightBound = 480;  // First room is one screen wide
+
+    // "GO →" indicator (hidden until room is cleared)
+    this.goIndicator = this.add.text(0, 0, 'GO →', {
+      fontSize: '14px', fontFamily: 'monospace', color: '#44ff44',
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5).setResolution(4).setDepth(GAME_CONFIG.layers.ui).setVisible(false);
 
     // Spawn first room's enemies
     this.spawnRoom(dungeon.rooms[0]);
@@ -251,25 +259,34 @@ export class DungeonScene extends Phaser.Scene {
   spawnRoom(roomDef) {
     if (!roomDef) return;
 
+    this.roomCleared = false;
+    this.goIndicator.setVisible(false);
+    this.combatStarted = false;
+
+    // Calculate room position based on index
+    const roomWidth = roomDef.width || 480;
+    let roomStartX = 0;
+    const dungeon = DUNGEONS[this.dungeonKey];
+    for (let i = 0; i < this.currentRoomIndex; i++) {
+      roomStartX += dungeon.rooms[i].width || 480;
+    }
+
+    this.roomLeftBound = roomStartX;
+    this.roomRightBound = roomStartX + roomWidth;
+
     // Boss arena — special wide room with custom environment
     if (roomDef.type === 'bossArena') {
       this.createBossArena(roomDef);
       this.roomLocked = true;
-
-      // Lock camera to the arena bounds
-      const arenaX = this.bossArenaX;
-      const arenaW = roomDef.width;
-      this.cameras.main.stopFollow();
-      this.cameras.main.setBounds(arenaX, 0, arenaW, GAME_CONFIG.height);
-      this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
       return;
     }
 
-    const spawnX = this.player.x + 120;
+    // Spawn enemies in the right half of the room
+    const spawnCenter = roomStartX + roomWidth * 0.65;
 
     if (roomDef.enemies) {
       roomDef.enemies.forEach((enemyKey, i) => {
-        const ex = spawnX + 30 + i * 25 + Math.random() * 20;
+        const ex = spawnCenter + (i - roomDef.enemies.length / 2) * 25 + Math.random() * 15;
         const ey = GAME_CONFIG.groundMinY + 10 + Math.random() * (GAME_CONFIG.groundMaxY - GAME_CONFIG.groundMinY - 20);
         const enemy = new Enemy(this, ex, ey, enemyKey, this.keystoneLevel);
         this.affixManager.applySpawnModifiers(enemy);
@@ -280,7 +297,7 @@ export class DungeonScene extends Phaser.Scene {
     }
 
     if (roomDef.boss) {
-      const bx = spawnX + 80;
+      const bx = spawnCenter + 40;
       const by = (GAME_CONFIG.groundMinY + GAME_CONFIG.groundMaxY) / 2;
       const boss = new Enemy(this, bx, by, roomDef.boss, this.keystoneLevel);
       this.affixManager.applySpawnModifiers(boss);
@@ -289,10 +306,8 @@ export class DungeonScene extends Phaser.Scene {
       this.enemyGroup.add(boss);
     }
 
-    // Lock camera if arena room
-    if (roomDef.type === 'arena' || roomDef.type === 'boss') {
-      this.roomLocked = true;
-    }
+    // Lock room — player can't leave until enemies are dead
+    this.roomLocked = true;
   }
 
   /**
@@ -413,17 +428,43 @@ export class DungeonScene extends Phaser.Scene {
 
     if (this.enemies.length === 0 && this.roomLocked) {
       this.roomLocked = false;
-      this.currentRoomIndex++;
+      this.roomCleared = true;
 
       const dungeon = DUNGEONS[this.dungeonKey];
-      if (this.currentRoomIndex < dungeon.rooms.length) {
-        // Brief pause then spawn next room
-        this.time.delayedCall(1000, () => {
-          this.spawnRoom(dungeon.rooms[this.currentRoomIndex]);
-        });
+      if (this.currentRoomIndex < dungeon.rooms.length - 1) {
+        // Show GO indicator — player needs to walk right to proceed
+        this.goIndicator.setVisible(true);
+        // Unlock right boundary so player can walk forward
+        this.roomRightBound = this.worldWidth;
       } else {
-        // Dungeon complete!
-        this.completeDungeon();
+        // Last room — dungeon complete after brief pause
+        this.time.delayedCall(1500, () => this.completeDungeon());
+      }
+    }
+  }
+
+  /**
+   * Check if the player has walked into the next room zone.
+   * Called every frame from update().
+   */
+  checkRoomTransition() {
+    if (!this.roomCleared) return;
+
+    const dungeon = DUNGEONS[this.dungeonKey];
+
+    // Calculate where the next room starts
+    let nextRoomX = 0;
+    for (let i = 0; i <= this.currentRoomIndex; i++) {
+      nextRoomX += dungeon.rooms[i].width || 480;
+    }
+
+    // Player crossed into the next room zone
+    if (this.player.x >= nextRoomX - 60) {
+      this.currentRoomIndex++;
+      this.goIndicator.setVisible(false);
+
+      if (this.currentRoomIndex < dungeon.rooms.length) {
+        this.spawnRoom(dungeon.rooms[this.currentRoomIndex]);
       }
     }
   }
@@ -431,15 +472,45 @@ export class DungeonScene extends Phaser.Scene {
   completeDungeon() {
     this.dungeonTimer.complete();
     const upgrade = this.dungeonTimer.getKeyUpgrade();
+    this.goIndicator.setVisible(false);
 
-    // TODO: Show results screen with:
-    // - Time remaining
-    // - Deaths
-    // - Key upgrade level
-    // - Damage/healing done per party member
-    // - Loot drops
+    // Victory overlay
+    const { width, height } = this.cameras.main;
+    const cx = this.cameras.main.scrollX + width / 2;
+    const cy = height / 2;
 
-    console.log(`Dungeon complete! Key upgrade: +${upgrade}, Deaths: ${this.dungeonTimer.deaths}`);
+    // Dark overlay
+    const overlay = this.add.rectangle(cx, cy, width, height, 0x000000, 0.7);
+    overlay.setDepth(GAME_CONFIG.layers.ui + 10).setScrollFactor(0);
+
+    // Victory text
+    this.add.text(width / 2, height * 0.3, 'DUNGEON COMPLETE!', {
+      fontSize: '20px', fontFamily: 'monospace', color: '#44ff44',
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5).setResolution(4).setDepth(GAME_CONFIG.layers.ui + 11).setScrollFactor(0);
+
+    const timeStr = this.dungeonTimer.getTimeString();
+    const deaths = this.dungeonTimer.deaths;
+    const results = [
+      `Time: ${timeStr}`,
+      `Deaths: ${deaths} (-${deaths * 5}s penalty)`,
+      `Key Upgrade: +${upgrade}`,
+      `Keystone Level: M+${this.keystoneLevel}`,
+    ].join('\n');
+
+    this.add.text(width / 2, height * 0.55, results, {
+      fontSize: '10px', fontFamily: 'monospace', color: '#b0b0c8',
+      align: 'center', lineSpacing: 6,
+    }).setOrigin(0.5).setResolution(4).setDepth(GAME_CONFIG.layers.ui + 11).setScrollFactor(0);
+
+    this.add.text(width / 2, height * 0.82, 'Press ENTER to return to menu', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#707090',
+    }).setOrigin(0.5).setResolution(4).setDepth(GAME_CONFIG.layers.ui + 11).setScrollFactor(0);
+
+    this.input.keyboard.once('keydown-ENTER', () => {
+      this.scene.stop('UIScene');
+      this.scene.start('MainMenuScene');
+    });
   }
 
   /**
@@ -487,8 +558,19 @@ export class DungeonScene extends Phaser.Scene {
       layer.sprite.tilePositionX = scrollX * layer.scrollFactor;
     }
 
-    // Camera bounds (prevent scrolling past world edge)
-    this.player.x = Phaser.Math.Clamp(this.player.x, 16, this.worldWidth - 16);
+    // Room boundaries — clamp player to current room
+    this.player.x = Phaser.Math.Clamp(this.player.x, this.roomLeftBound + 16, this.roomRightBound - 16);
+
+    // Check if player walked into next room
+    this.checkRoomTransition();
+
+    // Animate GO indicator (flashing + positioned at right edge of screen)
+    if (this.goIndicator.visible) {
+      const screenRight = this.cameras.main.scrollX + GAME_CONFIG.width - 30;
+      const screenMidY = GAME_CONFIG.height / 2;
+      this.goIndicator.setPosition(screenRight, screenMidY);
+      this.goIndicator.setAlpha(0.6 + Math.sin(time * 0.006) * 0.4);
+    }
   }
 
   /**

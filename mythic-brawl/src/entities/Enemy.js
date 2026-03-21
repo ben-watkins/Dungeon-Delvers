@@ -336,19 +336,21 @@ export class Enemy extends Phaser.GameObjects.Container {
   }
 
   fireRangedAttack() {
-    // Play attack animation briefly
     this.sprite.play(`${this.enemyKey}_atk1`, true);
 
-    // Face target
-    if (this.target) {
-      this.facingRight = this.target.x > this.x;
+    // Ranged attacks target a random party member (not locked to tank)
+    const party = this.scene.getPartyMembers();
+    const alive = party.filter(m => m.hp > 0);
+    const rangedTarget = alive.length > 0 ? alive[Phaser.Math.Between(0, alive.length - 1)] : this.target;
+
+    if (rangedTarget) {
+      this.facingRight = rangedTarget.x > this.x;
       this.sprite.setFlipX(!this.facingRight);
     }
 
-    // Emit ranged attack event for ProjectileSystem
     this.scene.events.emit('enemyRangedAttack', {
       enemy: this,
-      target: this.target,
+      target: rangedTarget,
     });
   }
 
@@ -356,18 +358,14 @@ export class Enemy extends Phaser.GameObjects.Container {
     const party = this.scene.getPartyMembers();
     if (party.length === 0) { this.target = null; return; }
 
-    // Find the tank (if alive)
+    // Melee aggro: always target the tank if alive
     const tank = party.find(m => m.hp > 0 && m.classData && m.classData.role === 'tank');
-
     if (tank) {
-      // 75% chance to target the tank, 25% chance to pick a random party member
-      if (Math.random() < 0.75) {
-        this.target = tank;
-        return;
-      }
+      this.target = tank;
+      return;
     }
 
-    // Random target from alive party members
+    // No tank alive — fallback to random
     const alive = party.filter(m => m.hp > 0);
     if (alive.length > 0) {
       this.target = alive[Phaser.Math.Between(0, alive.length - 1)];

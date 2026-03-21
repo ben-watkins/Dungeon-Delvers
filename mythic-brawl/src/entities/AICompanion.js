@@ -56,7 +56,7 @@ export class AICompanion extends Phaser.GameObjects.Container {
     this.currentAction = 'idle';
     this.moveTarget = null;          // { x, y } position to move toward
     this.attackTarget = null;        // Enemy entity to attack
-    this.cooldowns = { special1: 0, special2: 0 };
+    this.cooldowns = { special1: 0, special2: 0, special3: 0, special4: 0, special5: 0 };
 
     // Follow formation offset — companions trail behind the player
     this.followIndex = 0;            // Set externally after construction
@@ -105,7 +105,31 @@ export class AICompanion extends Phaser.GameObjects.Container {
       },
       attack: {
         enter() {
-          this.sprite.play(`${this.classKey}_atk1`, true);
+          // Cycle through different attack animations each time
+          if (!this.aiAttackIndex) this.aiAttackIndex = 0;
+          const combo = this.classData.combo || [`${this.classKey}_atk1`];
+          const attackAnim = combo[this.aiAttackIndex % combo.length];
+          const atkNum = (this.aiAttackIndex % combo.length) + 1;
+          this.aiAttackIndex++;
+
+          // Pick a random special to use occasionally (30% chance)
+          const specials = this.classData.specials ? Object.keys(this.classData.specials) : [];
+          let useSpecial = null;
+          if (specials.length > 0 && Math.random() < 0.3) {
+            const spKey = specials[Phaser.Math.Between(0, specials.length - 1)];
+            const sp = this.classData.specials[spKey];
+            if (this.cooldowns[spKey] <= 0) {
+              useSpecial = { key: spKey, data: sp };
+              this.cooldowns[spKey] = sp.cooldown;
+            }
+          }
+
+          // Play animation — special or combo attack
+          if (useSpecial) {
+            this.sprite.play(`${this.classKey}_special${useSpecial.key.replace('special', '')}`, true);
+          } else {
+            this.sprite.play(`${this.classKey}_atk${atkNum}`, true);
+          }
           this.fsm.locked = true;
 
           // Face target
@@ -114,14 +138,30 @@ export class AICompanion extends Phaser.GameObjects.Container {
             this.sprite.setFlipX(!this.facingRight);
           }
 
-          // Emit hitbox
+          // Emit damage — specials do more
+          const dmgMultiplier = useSpecial ? (useSpecial.data.damage || 2) : 1;
           this.scene.time.delayedCall(150, () => {
             if (this.fsm.is('attack') && this.attackTarget) {
               this.scene.events.emit('aiAttack', {
                 companion: this,
                 target: this.attackTarget,
-                damage: 8 * this.power,
+                damage: 8 * this.power * dmgMultiplier,
               });
+
+              // Heal specials
+              if (useSpecial && useSpecial.data.healAmount) {
+                const party = this.scene.getPartyMembers();
+                const lowest = party.reduce((low, m) => {
+                  if (m.hp <= 0) return low;
+                  return (!low || m.hp < low.hp) ? m : low;
+                }, null);
+                if (lowest) {
+                  lowest.hp = Math.min(lowest.maxHp, lowest.hp + useSpecial.data.healAmount);
+                  this.scene.events.emit('aiHeal', {
+                    healer: this, target: lowest, amount: useSpecial.data.healAmount,
+                  });
+                }
+              }
             }
           });
 
@@ -393,8 +433,9 @@ export class AICompanion extends Phaser.GameObjects.Container {
   }
 
   update(time, dt) {
-    if (this.cooldowns.special1 > 0) this.cooldowns.special1 -= dt;
-    if (this.cooldowns.special2 > 0) this.cooldowns.special2 -= dt;
+    for (const key of Object.keys(this.cooldowns)) {
+      if (this.cooldowns[key] > 0) this.cooldowns[key] -= dt;
+    }
     this.fsm.update(dt);
     this.y = this.groundY - this.jumpZ;
 

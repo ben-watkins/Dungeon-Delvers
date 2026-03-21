@@ -58,6 +58,9 @@ export class AICompanion extends Phaser.GameObjects.Container {
     this.attackTarget = null;        // Enemy entity to attack
     this.cooldowns = { special1: 0, special2: 0 };
 
+    // Follow formation offset — companions trail behind the player
+    this.followIndex = 0;            // Set externally after construction
+
     // Combat
     this.knockbackVelocity = { x: 0, y: 0 };
     this.hitstunDuration = 0;
@@ -175,45 +178,97 @@ export class AICompanion extends Phaser.GameObjects.Container {
 
     const enemies = this.scene.getAliveEnemies();
     const party = this.scene.getPartyMembers();
+    const player = this.scene.player;
+    const inCombat = this.scene.combatStarted && enemies.length > 0;
 
+    // Out of combat or waiting for player to attack — follow the player
+    if (!inCombat) {
+      this.aiFollowPlayer(player);
+      return;
+    }
+
+    // In combat — role-based behavior
     if (this.role === 'tank') this.aiTankBehavior(enemies, party);
     else if (this.role === 'healer') this.aiHealerBehavior(enemies, party);
     else this.aiDpsBehavior(enemies, party);
   }
 
+  /**
+   * Follow behind the player in a staggered formation.
+   */
+  aiFollowPlayer(player) {
+    if (!player || player.hp <= 0) return;
+
+    // Offset behind the player based on follow index
+    const behindDir = player.facingRight ? -1 : 1;
+    const offsetX = behindDir * (20 + this.followIndex * 14);
+    const offsetY = 6 + this.followIndex * 6;
+    const targetX = player.x + offsetX;
+    const targetY = player.groundY + offsetY;
+
+    const dx = targetX - this.x;
+    const dy = targetY - this.groundY;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    if (dist < 8) {
+      // Close enough — idle and face same way as player
+      this.facingRight = player.facingRight;
+      this.sprite.setFlipX(!this.facingRight);
+      this.fsm.transition('idle');
+    } else {
+      this.moveTarget = { x: targetX, y: targetY };
+      this.fsm.transition('walk');
+    }
+  }
+
   aiTankBehavior(enemies, party) {
     if (enemies.length === 0) {
-      this.currentAction = 'idle';
       this.fsm.transition('idle');
       return;
     }
 
-    // Find the closest enemy to any ally
-    let closestToAlly = null;
-    let minDist = Infinity;
+    // Position in front of enemies (between enemies and allies)
+    // Pick the enemy closest to the party to intercept first
+    let priorityTarget = null;
+    let minDistToParty = Infinity;
     for (const enemy of enemies) {
       for (const ally of party) {
         if (ally === this) continue;
         const d = Phaser.Math.Distance.Between(enemy.x, enemy.groundY, ally.x, ally.groundY);
-        if (d < minDist) {
-          minDist = d;
-          closestToAlly = enemy;
+        if (d < minDistToParty) {
+          minDistToParty = d;
+          priorityTarget = enemy;
         }
       }
     }
 
-    this.attackTarget = closestToAlly || enemies[0];
+    this.attackTarget = priorityTarget || enemies[0];
     const dist = this.distTo(this.attackTarget);
 
     if (dist <= 20) {
+      // In range — attack to grab aggro
       this.fsm.transition('attack');
+
+      // After attacking one, cycle to next untaunted enemy
+      if (enemies.length > 1) {
+        const nextTarget = enemies.find(e => e !== this.attackTarget) || enemies[0];
+        this.attackTarget = nextTarget;
+      }
     } else {
-      this.moveTarget = { x: this.attackTarget.x, y: this.attackTarget.groundY };
+      // Rush ahead of enemies — position between them and the party
+      const player = this.scene.player;
+      const ahead = this.attackTarget.x > player.x ? 1 : -1;
+      this.moveTarget = {
+        x: this.attackTarget.x + ahead * 10,
+        y: this.attackTarget.groundY,
+      };
       this.fsm.transition('walk');
     }
   }
 
   aiHealerBehavior(enemies, party) {
+    const player = this.scene.player;
+
     // Check if anyone needs healing
     const lowestAlly = party.reduce((low, m) => {
       if (m.hp <= 0) return low;
@@ -224,7 +279,6 @@ export class AICompanion extends Phaser.GameObjects.Container {
     const needsHeal = lowestAlly && (lowestAlly.hp / lowestAlly.maxHp) < 0.6;
 
     if (needsHeal && this.cooldowns.special1 <= 0) {
-      // Heal the lowest ally
       this.scene.events.emit('aiHeal', {
         healer: this,
         target: lowestAlly,
@@ -234,21 +288,25 @@ export class AICompanion extends Phaser.GameObjects.Container {
       return;
     }
 
-    // Otherwise DPS
+    // Stay near the player but behind, attack from range
     if (enemies.length > 0) {
       this.attackTarget = enemies[0];
-      const dist = this.distTo(this.attackTarget);
+      const distToEnemy = this.distTo(this.attackTarget);
+      const distToPlayer = this.distTo(player);
 
-      // Stay at range
-      if (dist < 40) {
-        // Move away
+      if (distToEnemy < 35) {
+        // Too close to enemies — retreat toward the player
         this.moveTarget = {
-          x: this.x + (this.x > this.attackTarget.x ? 20 : -20),
-          y: this.groundY,
+          x: player.x + (player.facingRight ? -25 : 25),
+          y: player.groundY + 8,
         };
         this.fsm.transition('walk');
-      } else if (dist <= 50) {
+      } else if (distToEnemy <= 50) {
         this.fsm.transition('attack');
+      } else if (distToPlayer > 50) {
+        // Too far from player — move closer
+        this.moveTarget = { x: player.x, y: player.groundY + 8 };
+        this.fsm.transition('walk');
       } else {
         this.moveTarget = { x: this.attackTarget.x, y: this.attackTarget.groundY };
         this.fsm.transition('walk');
@@ -264,8 +322,19 @@ export class AICompanion extends Phaser.GameObjects.Container {
       return;
     }
 
-    // Focus player's target or closest enemy
-    this.attackTarget = enemies[0];
+    // Focus the same target the player is closest to
+    const player = this.scene.player;
+    let bestTarget = enemies[0];
+    let bestDist = Infinity;
+    for (const enemy of enemies) {
+      const d = Phaser.Math.Distance.Between(player.x, player.groundY, enemy.x, enemy.groundY);
+      if (d < bestDist) {
+        bestDist = d;
+        bestTarget = enemy;
+      }
+    }
+
+    this.attackTarget = bestTarget;
     const dist = this.distTo(this.attackTarget);
 
     if (dist <= 18) {

@@ -38,6 +38,9 @@ const config = {
     mode: Phaser.Scale.FIT,          // Scale to fit window while maintaining aspect ratio
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
+  input: {
+    gamepad: true,                   // Enable Xbox / generic gamepad support
+  },
   physics: {
     default: 'arcade',
     arcade: {

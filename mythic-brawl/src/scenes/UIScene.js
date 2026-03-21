@@ -36,20 +36,20 @@ export class UIScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
 
     // --- TOP BAR: Dungeon name + Keystone + Timer ---
-    this.add.rectangle(width / 2, 0, width, 16, 0x0d0d18, 0.85)
+    this.add.rectangle(width / 2, 0, width, 20, 0x0d0d18, 0.85)
       .setOrigin(0.5, 0).setDepth(0);
 
-    this.dungeonLabel = this.add.text(4, 2, `M+${this.keystoneLevel}  ${this.dungeonName}`, {
-      fontSize: '7px', fontFamily: 'monospace', color: '#b0b0c8',
-    }).setDepth(1);
+    this.dungeonLabel = this.add.text(6, 3, `M+${this.keystoneLevel}  ${this.dungeonName}`, {
+      fontSize: '10px', fontFamily: 'monospace', color: '#b0b0c8',
+    }).setResolution(2).setDepth(1);
 
-    this.timerText = this.add.text(width - 4, 2, '00:00', {
-      fontSize: '8px', fontFamily: 'monospace', color: '#80d8ff',
-    }).setOrigin(1, 0).setDepth(1);
+    this.timerText = this.add.text(width - 6, 3, '00:00', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#80d8ff',
+    }).setOrigin(1, 0).setResolution(2).setDepth(1);
 
-    this.deathText = this.add.text(width - 4, 10, '', {
-      fontSize: '6px', fontFamily: 'monospace', color: '#cc4444',
-    }).setOrigin(1, 0).setDepth(1);
+    this.deathText = this.add.text(width - 6, 15, '', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#cc4444',
+    }).setOrigin(1, 0).setResolution(2).setDepth(1);
 
     // --- AFFIX INDICATORS ---
     const affixNames = this.affixManager.getActiveAffixNames();
@@ -61,49 +61,49 @@ export class UIScene extends Phaser.Scene {
     };
 
     affixNames.forEach((name, i) => {
-      const ax = width / 2 - (affixNames.length * 30) / 2 + i * 30;
+      const ax = width / 2 - (affixNames.length * 40) / 2 + i * 40;
       const color = affixColors[name] || 0x888888;
-      this.add.rectangle(ax + 4, 10, 6, 6, color).setDepth(1);
-      this.add.text(ax + 10, 8, name.substring(0, 4), {
-        fontSize: '5px', fontFamily: 'monospace', color: '#9090a8',
-      }).setDepth(1);
+      this.add.rectangle(ax + 4, 14, 6, 6, color).setDepth(1);
+      this.add.text(ax + 12, 11, name.substring(0, 4), {
+        fontSize: '8px', fontFamily: 'monospace', color: '#9090a8',
+      }).setResolution(2).setDepth(1);
     });
 
     // --- PARTY FRAMES (bottom-left) ---
     this.partyFrames = [];
     this.partyMembers.forEach((member, i) => {
-      const fx = 4;
-      const fy = height - 40 + i * 12;
+      const fx = 6;
+      const fy = height - 52 + i * 16;
       const isPlayer = member === this.player;
 
       const frame = {
         member,
         nameText: this.add.text(fx, fy, `${isPlayer ? '>' : ' '}${member.classData.name}`, {
-          fontSize: '6px', fontFamily: 'monospace',
+          fontSize: '9px', fontFamily: 'monospace',
           color: isPlayer ? '#ffffff' : '#9090a8',
-        }).setDepth(1),
-        hpBg: this.add.rectangle(fx + 42, fy + 3, 40, 4, 0x1a1a2e).setOrigin(0, 0.5).setDepth(1),
-        hpFill: this.add.rectangle(fx + 42, fy + 3, 40, 4, 0x44cc44).setOrigin(0, 0.5).setDepth(1),
-        hpText: this.add.text(fx + 84, fy, '', {
-          fontSize: '5px', fontFamily: 'monospace', color: '#808098',
-        }).setDepth(1),
+        }).setResolution(2).setDepth(1),
+        hpBg: this.add.rectangle(fx + 56, fy + 5, 50, 6, 0x1a1a2e).setOrigin(0, 0.5).setDepth(1),
+        hpFill: this.add.rectangle(fx + 56, fy + 5, 50, 6, 0x44cc44).setOrigin(0, 0.5).setDepth(1),
+        hpText: this.add.text(fx + 110, fy, '', {
+          fontSize: '8px', fontFamily: 'monospace', color: '#808098',
+        }).setResolution(2).setDepth(1),
       };
       this.partyFrames.push(frame);
     });
 
     // --- COOLDOWN INDICATORS (bottom-right) ---
-    this.cd1Text = this.add.text(width - 60, height - 16, '[K] Special 1', {
-      fontSize: '5px', fontFamily: 'monospace', color: '#505068',
-    }).setDepth(1);
+    this.cd1Text = this.add.text(width - 6, height - 24, '[2] Special 1', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#505068',
+    }).setOrigin(1, 0).setResolution(2).setDepth(1);
 
-    this.cd2Text = this.add.text(width - 60, height - 8, '[L] Special 2', {
-      fontSize: '5px', fontFamily: 'monospace', color: '#505068',
-    }).setDepth(1);
+    this.cd2Text = this.add.text(width - 6, height - 12, '[3] Special 2', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#505068',
+    }).setOrigin(1, 0).setResolution(2).setDepth(1);
 
     // --- CONTROLS HINT (first 10 seconds) ---
-    this.controlsHint = this.add.text(width / 2, height - 4, 'WASD move · J attack · K/L specials', {
-      fontSize: '5px', fontFamily: 'monospace', color: '#404060',
-    }).setOrigin(0.5, 1).setDepth(1);
+    this.controlsHint = this.add.text(width / 2, height - 4, 'WASD move · NUM1 attack · NUM2/NUM3 specials', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#404060',
+    }).setOrigin(0.5, 1).setResolution(2).setDepth(1);
 
     this.time.delayedCall(10000, () => {
       this.controlsHint?.destroy();
@@ -142,10 +142,10 @@ export class UIScene extends Phaser.Scene {
       const cd1 = Math.max(0, Math.ceil(this.player.cooldowns.special1 / 1000));
       const cd2 = Math.max(0, Math.ceil(this.player.cooldowns.special2 / 1000));
 
-      this.cd1Text.setText(cd1 > 0 ? `[K] ${this.player.classData.specials.special1.name} (${cd1}s)` : `[K] ${this.player.classData.specials.special1.name}`);
+      this.cd1Text.setText(cd1 > 0 ? `[2] ${this.player.classData.specials.special1.name} (${cd1}s)` : `[2] ${this.player.classData.specials.special1.name}`);
       this.cd1Text.setColor(cd1 > 0 ? '#cc4444' : '#44cc44');
 
-      this.cd2Text.setText(cd2 > 0 ? `[L] ${this.player.classData.specials.special2.name} (${cd2}s)` : `[L] ${this.player.classData.specials.special2.name}`);
+      this.cd2Text.setText(cd2 > 0 ? `[3] ${this.player.classData.specials.special2.name} (${cd2}s)` : `[3] ${this.player.classData.specials.special2.name}`);
       this.cd2Text.setColor(cd2 > 0 ? '#cc4444' : '#44cc44');
     }
   }

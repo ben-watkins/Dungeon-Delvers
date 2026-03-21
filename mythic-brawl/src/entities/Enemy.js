@@ -237,21 +237,27 @@ export class Enemy extends Phaser.GameObjects.Container {
   }
 
   findTarget() {
-    // Get all party members and pick closest
     const party = this.scene.getPartyMembers();
-    let closest = null;
-    let closestDist = Infinity;
+    if (party.length === 0) { this.target = null; return; }
 
-    for (const member of party) {
-      if (member.hp <= 0) continue;
-      const d = this.distTo(member);
-      if (d < closestDist) {
-        closestDist = d;
-        closest = member;
+    // Find the tank (if alive)
+    const tank = party.find(m => m.hp > 0 && m.classData && m.classData.role === 'tank');
+
+    if (tank) {
+      // 75% chance to target the tank, 25% chance to pick a random party member
+      if (Math.random() < 0.75) {
+        this.target = tank;
+        return;
       }
     }
 
-    this.target = closest;
+    // Random target from alive party members
+    const alive = party.filter(m => m.hp > 0);
+    if (alive.length > 0) {
+      this.target = alive[Phaser.Math.Between(0, alive.length - 1)];
+    } else {
+      this.target = null;
+    }
   }
 
   moveTowardTarget(dt) {

@@ -49,7 +49,7 @@ export const CLASSES = {
   warrior: {
     name: 'Warrior',
     role: 'tank',
-    stats: { hp: 150, speed: 55, power: 1.0, defense: 1.4 },
+    stats: { hp: 150, speed: 55, power: 0.15, defense: 1.4 },
     combo: ['warrior_atk1', 'warrior_atk2', 'warrior_atk3'],
     specials: {
       special1: {
@@ -86,7 +86,7 @@ export const CLASSES = {
   priest: {
     name: 'Priest',
     role: 'healer',
-    stats: { hp: 90, speed: 50, power: 0.7, defense: 0.8 },
+    stats: { hp: 90, speed: 50, power: 0.1, defense: 0.8 },
     combo: ['priest_atk1', 'priest_atk2', 'priest_atk3'],
     specials: {
       special1: {
@@ -117,7 +117,7 @@ export const CLASSES = {
   rogue: {
     name: 'Rogue',
     role: 'dps',
-    stats: { hp: 100, speed: 70, power: 1.3, defense: 0.9 },
+    stats: { hp: 100, speed: 70, power: 0.2, defense: 0.9 },
     combo: ['rogue_atk1', 'rogue_atk2', 'rogue_atk3', 'rogue_atk4'],
     specials: {
       special1: {
@@ -265,7 +265,7 @@ export const ENEMIES = {
   imp: {
     name: 'Imp',
     type: 'trash',
-    stats: { hp: 30, speed: 50, power: 0.5, defense: 0.4 },
+    stats: { hp: 300, speed: 50, power: 0.05, defense: 0.4 },
     attacks: ['imp_scratch'],
     aggroRange: 80,
     attackRange: 16,
@@ -274,7 +274,7 @@ export const ENEMIES = {
   hellknight: {
     name: 'Hellknight',
     type: 'elite',
-    stats: { hp: 120, speed: 30, power: 1.3, defense: 1.3 },
+    stats: { hp: 800, speed: 30, power: 0.08, defense: 1.3 },
     attacks: ['hellknight_slash', 'hellknight_charge'],
     aggroRange: 100,
     attackRange: 22,
@@ -284,7 +284,7 @@ export const ENEMIES = {
     name: 'Pitlord',
     type: 'boss',
     frameSize: 64,
-    stats: { hp: 500, speed: 20, power: 1.8, defense: 1.6 },
+    stats: { hp: 3000, speed: 20, power: 0.1, defense: 1.6 },
     attacks: ['pitlord_cleave', 'pitlord_stomp'],
     phases: [
       { hpThreshold: 0.6, attack: 'pitlord_hellfire' },
@@ -356,17 +356,26 @@ export const AFFIXES = {
 /**
  * INPUT MAPPING
  * Default keyboard bindings. Can be remapped.
+ *
+ * Xbox controller mapping (active when gamepad connected):
+ *   Left stick / D-pad — Move
+ *   A button   — Attack
+ *   X button   — Special 1
+ *   Y button   — Special 2
+ *   B button   — Block
+ *   RB         — Dodge
+ *   Start      — Pause / Confirm
  */
 export const INPUT_MAP = {
   moveLeft: 'A',
   moveRight: 'D',
   moveUp: 'W',
   moveDown: 'S',
-  attack: 'J',
-  special1: 'K',
-  special2: 'L',
-  block: 'SHIFT',
-  dodge: 'SPACE',
+  attack: 'NUMPAD_ONE',
+  special1: 'NUMPAD_TWO',
+  special2: 'NUMPAD_THREE',
+  block: 'NUMPAD_FOUR',
+  dodge: 'NUMPAD_FIVE',
   interact: 'E',
   pause: 'ESC',
 };

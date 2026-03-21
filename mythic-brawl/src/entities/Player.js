@@ -97,11 +97,16 @@ export class Player extends Phaser.GameObjects.Container {
     this.keys.special2 = kb.addKey(INPUT_MAP.special2);
     this.keys.block = kb.addKey(INPUT_MAP.block);
     this.keys.dodge = kb.addKey(INPUT_MAP.dodge);
+    this.keys.sprint = kb.addKey('SHIFT');
 
     // Track just-pressed for buffering
     this.attackJustPressed = false;
     this.special1JustPressed = false;
     this.special2JustPressed = false;
+
+    // Gamepad — tracks previous frame button state for just-pressed detection
+    this.pad = null;
+    this.padPrev = {};
   }
 
   buildStates() {
@@ -162,6 +167,9 @@ export class Player extends Phaser.GameObjects.Container {
           this.currentAttack = attackData;
           this.attackFrame = 0;
           this.attackHit = false;  // Track if this attack has hit anything
+
+          // Signal AI companions that combat has begun
+          this.scene.events.emit('playerAttack');
 
           // Lock FSM during active attack frames
           this.fsm.locked = true;
@@ -286,25 +294,50 @@ export class Player extends Phaser.GameObjects.Container {
   }
 
   isMoving() {
-    return this.keys.left.isDown || this.keys.right.isDown ||
-           this.keys.up.isDown || this.keys.down.isDown;
+    if (this.keys.left.isDown || this.keys.right.isDown ||
+        this.keys.up.isDown || this.keys.down.isDown) return true;
+
+    // Check gamepad left stick / d-pad
+    if (this.pad) {
+      const deadzone = 0.2;
+      if (Math.abs(this.pad.leftStick.x) > deadzone || Math.abs(this.pad.leftStick.y) > deadzone) return true;
+      if (this.pad.left || this.pad.right || this.pad.up || this.pad.down) return true;
+    }
+    return false;
   }
 
   handleMovementInput(dt) {
-    const spd = this.speed * (dt / 1000);
+    // Sprint: hold left shift for 50% speed boost, or LB on gamepad
+    const sprinting = this.keys.sprint.isDown ||
+      (this.pad && this.pad.buttons[4] && this.pad.buttons[4].pressed);
+    const spd = this.speed * (dt / 1000) * (sprinting ? 1.5 : 1);
     let dx = 0, dy = 0;
 
+    // Keyboard
     if (this.keys.left.isDown) dx -= spd;
     if (this.keys.right.isDown) dx += spd;
-    if (this.keys.up.isDown) dy -= spd * 0.6;    // Slower vertical movement for 2.5D perspective
+    if (this.keys.up.isDown) dy -= spd * 0.6;
     if (this.keys.down.isDown) dy += spd * 0.6;
+
+    // Gamepad left stick + d-pad
+    if (this.pad) {
+      const deadzone = 0.2;
+      const stickX = Math.abs(this.pad.leftStick.x) > deadzone ? this.pad.leftStick.x : 0;
+      const stickY = Math.abs(this.pad.leftStick.y) > deadzone ? this.pad.leftStick.y : 0;
+      dx += stickX * spd;
+      dy += stickY * spd * 0.6;
+
+      if (this.pad.left) dx -= spd;
+      if (this.pad.right) dx += spd;
+      if (this.pad.up) dy -= spd * 0.6;
+      if (this.pad.down) dy += spd * 0.6;
+    }
 
     if (dx !== 0 || dy !== 0) {
       this.x += dx;
       this.groundY = clampToGround(this.groundY + dy);
       this.y = this.groundY - this.jumpZ;
 
-      // Flip sprite based on direction
       if (dx < 0) {
         this.facingRight = false;
         this.sprite.setFlipX(true);
@@ -392,10 +425,31 @@ export class Player extends Phaser.GameObjects.Container {
       return;
     }
 
-    // Track just-pressed inputs
+    // Grab gamepad (first connected pad)
+    if (!this.pad && this.scene.input.gamepad && this.scene.input.gamepad.total > 0) {
+      this.pad = this.scene.input.gamepad.pad1;
+    }
+
+    // Track just-pressed inputs (keyboard)
     this.attackJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.attack);
     this.special1JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special1);
     this.special2JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special2);
+
+    // Gamepad button just-pressed detection
+    // Xbox: A=0 (attack), X=2 (special1), Y=3 (special2), B=1 (block), RB=5 (dodge)
+    if (this.pad) {
+      const btnA = this.pad.buttons[0] && this.pad.buttons[0].pressed;
+      const btnX = this.pad.buttons[2] && this.pad.buttons[2].pressed;
+      const btnY = this.pad.buttons[3] && this.pad.buttons[3].pressed;
+
+      if (btnA && !this.padPrev.a) this.attackJustPressed = true;
+      if (btnX && !this.padPrev.x) this.special1JustPressed = true;
+      if (btnY && !this.padPrev.y) this.special2JustPressed = true;
+
+      this.padPrev.a = btnA;
+      this.padPrev.x = btnX;
+      this.padPrev.y = btnY;
+    }
 
     // Update cooldowns
     if (this.cooldowns.special1 > 0) this.cooldowns.special1 -= dt;

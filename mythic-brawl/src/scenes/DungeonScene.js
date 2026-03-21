@@ -46,6 +46,10 @@ export class DungeonScene extends Phaser.Scene {
     this.enemies = [];
     this.allEntities = this.add.group();
 
+    // AI companions wait until the player attacks before engaging
+    this.combatStarted = false;
+    this.events.on('playerAttack', () => { this.combatStarted = true; });
+
     // Background (placeholder — solid color with ground line)
     this.createBackground();
 
@@ -64,6 +68,7 @@ export class DungeonScene extends Phaser.Scene {
     const aiClasses = allClasses.filter(c => c !== this.playerClass);
     aiClasses.forEach((cls, i) => {
       const companion = new AICompanion(this, 30 + i * 15, 195 + i * 10, cls);
+      companion.followIndex = i;  // Stagger formation position behind player
       this.partyMembers.push(companion);
       this.allEntities.add(companion);
     });

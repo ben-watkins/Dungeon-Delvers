@@ -53,16 +53,19 @@ export class BootScene extends Phaser.Scene {
     });
 
     // =====================================================
-    // LOAD REAL ASSETS HERE
-    // When sprite sheets are ready, load them like:
-    //   this.load.spritesheet('warrior', 'assets/sprites/warrior.png', { frameWidth: 48, frameHeight: 48 });
-    //   this.load.spritesheet('priest', 'assets/sprites/priest.png', { frameWidth: 48, frameHeight: 48 });
-    //   this.load.spritesheet('rogue', 'assets/sprites/rogue.png', { frameWidth: 48, frameHeight: 48 });
-    //   this.load.image('tileset_dungeon', 'assets/tilesets/dungeon.png');
-    //   this.load.tilemapTiledJSON('map_deadmines', 'assets/tilesets/deadmines.json');
-    //   this.load.audio('bgm_dungeon', 'assets/audio/dungeon_bgm.ogg');
-    //   this.load.audio('sfx_hit', 'assets/audio/hit.wav');
+    // REAL SPRITE SHEETS — 14 columns × 12 rows, 48×48 per frame
     // =====================================================
+    this.load.spritesheet('warrior', 'assets/sprites/warrior_side_right.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('priest', 'assets/sprites/priest_side_right.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('rogue', 'assets/sprites/rogue_side_right.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('mage', 'assets/sprites/mage_side_right.png', { frameWidth: 48, frameHeight: 48 });
+
+    // =====================================================
+    // DUNGEON ENVIRONMENT ART
+    // =====================================================
+    this.load.image('dungeon_bg', 'assets/dungeon_bg.png');
+    this.load.spritesheet('dungeon_tiles', 'assets/dungeon_tiles.png', { frameWidth: 16, frameHeight: 16 });
+    this.load.spritesheet('dungeon_props', 'assets/dungeon_props.png', { frameWidth: 32, frameHeight: 64 });
   }
 
   create() {
@@ -83,10 +86,8 @@ export class BootScene extends Phaser.Scene {
    * Each placeholder is a 48x48 canvas with the class color and a label.
    */
   generatePlaceholders() {
+    // Only generate placeholders for enemies — player classes use real sprite sheets
     const classes = [
-      { key: 'warrior', color: 0x7888a8, label: 'W' },
-      { key: 'priest', color: 0xc8c8e8, label: 'P' },
-      { key: 'rogue', color: 0x4a4868, label: 'R' },
       { key: 'goblin', color: 0x6a8a40, label: 'g' },
       { key: 'bandit', color: 0x8a6040, label: 'b' },
       { key: 'enforcer', color: 0x884444, label: 'E' },
@@ -170,12 +171,15 @@ export class BootScene extends Phaser.Scene {
    * When real sprite sheets are loaded, update frame ranges here.
    */
   createAnimations() {
-    const frameSize = 48;
-    const characters = ['warrior', 'priest', 'rogue', 'goblin', 'bandit', 'enforcer', 'mr_smite'];
+    // Real sprite sheets: 14 columns × 12 rows of 48×48
+    // Placeholder enemy sheets: 12 columns × 12 rows
+    const realSheetChars = ['warrior', 'priest', 'rogue', 'mage'];
+    const placeholderChars = ['goblin', 'bandit', 'enforcer', 'mr_smite'];
+    const characters = [...realSheetChars, ...placeholderChars];
 
     for (const char of characters) {
       const size = char === 'mr_smite' ? 64 : 48;
-      const framesPerRow = 12;
+      const framesPerRow = realSheetChars.includes(char) ? 14 : 12;
 
       // Helper: generate frame numbers for a row
       const rowFrames = (row, count) => {
@@ -186,8 +190,10 @@ export class BootScene extends Phaser.Scene {
         return frames;
       };
 
-      // Add the spritesheet config to the texture
-      this.textures.get(char).add(0, 0, 0, 0, size * framesPerRow, size * 12);
+      // Add the spritesheet config to the texture for placeholder-generated textures only
+      if (placeholderChars.includes(char)) {
+        this.textures.get(char).add(0, 0, 0, 0, size * framesPerRow, size * 12);
+      }
 
       // Idle
       this.anims.create({

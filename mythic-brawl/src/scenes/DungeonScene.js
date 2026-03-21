@@ -101,23 +101,69 @@ export class DungeonScene extends Phaser.Scene {
     // World width based on number of rooms
     this.worldWidth = 480 * 4;  // 4 screens wide for now
 
-    // Sky gradient
-    const sky = this.add.graphics();
-    sky.fillStyle(0x0d0d18);
-    sky.fillRect(0, 0, this.worldWidth, GAME_CONFIG.groundMinY);
-    sky.setDepth(GAME_CONFIG.layers.background);
+    // 1. Parallax background — dungeon_bg (480×160) tiles horizontally, scrolls at half camera speed
+    this.bgLayer = this.add.tileSprite(
+      GAME_CONFIG.width / 2,
+      GAME_CONFIG.groundMinY / 2,
+      GAME_CONFIG.width,
+      GAME_CONFIG.groundMinY,
+      'dungeon_bg'
+    );
+    this.bgLayer.setScrollFactor(0);
+    this.bgLayer.setDepth(GAME_CONFIG.layers.background);
 
-    // Ground
-    const ground = this.add.graphics();
-    ground.fillStyle(0x1a1a30);
-    ground.fillRect(0, GAME_CONFIG.groundMinY, this.worldWidth, GAME_CONFIG.height - GAME_CONFIG.groundMinY);
-    ground.fillStyle(0x141428);
-    ground.fillRect(0, GAME_CONFIG.groundMinY, this.worldWidth, 3);
-    ground.setDepth(GAME_CONFIG.layers.background + 1);
+    // 2. Tiled ground plane — stone floor from groundMinY to screen bottom
+    const groundY = GAME_CONFIG.groundMinY;
+    const groundH = GAME_CONFIG.height - groundY;
+    const tileSize = GAME_CONFIG.tileSize;
+    const cols = Math.ceil(this.worldWidth / tileSize);
+    const rows = Math.ceil(groundH / tileSize);
 
-    // TODO: Replace with tilemap-based backgrounds
-    // Tile layers: far background (parallax), mid buildings, near ground, foreground details
-    // Use Tiled editor to create .json tilemaps and load them in BootScene
+    const groundRT = this.add.renderTexture(0, groundY, this.worldWidth, rows * tileSize);
+    groundRT.setOrigin(0, 0);
+    groundRT.setDepth(GAME_CONFIG.layers.background + 1);
+
+    // Use stone floor tiles from row 0 of dungeon_tiles
+    for (let x = 0; x < cols; x++) {
+      for (let y = 0; y < rows; y++) {
+        // Mostly tile 0, with occasional variants for visual interest
+        const frame = Math.random() < 0.75 ? 0 : Phaser.Math.Between(1, 3);
+        groundRT.drawFrame('dungeon_tiles', frame, x * tileSize, y * tileSize);
+      }
+    }
+
+    // 3. Randomly placed props along the level
+    this.placeProps();
+  }
+
+  placeProps() {
+    // Prop frame indices in dungeon_props (32×64 cells, row 0 only has content)
+    // 0=pillar, 1=barrel, 2=bones, 3=cage, 4=torch stand, 5=rug, 6=frame, 7=torch, 9=candelabra
+    const WALL_PROPS = [0, 4, 9];   // pillar, torch stand, candelabra
+    const FLOOR_PROPS = [1, 2, 1];  // barrel, bones, barrel (weighted)
+
+    // Wall props — spaced along the back wall behind the walkable area
+    for (let x = 60; x < this.worldWidth - 60; x += Phaser.Math.Between(70, 120)) {
+      const frame = WALL_PROPS[Phaser.Math.Between(0, WALL_PROPS.length - 1)];
+      const prop = this.add.image(x, GAME_CONFIG.groundMinY, 'dungeon_props', frame);
+      prop.setOrigin(0.5, 1);
+      prop.setDepth(GAME_CONFIG.layers.groundDecor);
+    }
+
+    // Floor props — scattered across the walkable ground plane
+    for (let x = 100; x < this.worldWidth - 60; x += Phaser.Math.Between(90, 200)) {
+      const frame = FLOOR_PROPS[Phaser.Math.Between(0, FLOOR_PROPS.length - 1)];
+      const propY = Phaser.Math.Between(GAME_CONFIG.groundMinY + 15, GAME_CONFIG.groundMaxY - 10);
+      const prop = this.add.image(
+        x + Phaser.Math.Between(-20, 20),
+        propY,
+        'dungeon_props',
+        frame
+      );
+      prop.setOrigin(0.5, 1);
+      // Same depth formula as entities so props interleave with characters by Y position
+      prop.setDepth(GAME_CONFIG.layers.entities + propY);
+    }
   }
 
   spawnRoom(roomDef) {
@@ -221,6 +267,9 @@ export class DungeonScene extends Phaser.Scene {
 
     // Depth sort all entities
     sortGroup(this.allEntities);
+
+    // Parallax background — scroll at half camera speed
+    this.bgLayer.tilePositionX = this.cameras.main.scrollX * 0.5;
 
     // Camera bounds (prevent scrolling past world edge)
     this.player.x = Phaser.Math.Clamp(this.player.x, 16, this.worldWidth - 16);

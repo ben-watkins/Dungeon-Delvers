@@ -246,13 +246,13 @@ export const DUNGEONS = {
     timeLimit: 900,          // seconds
     keystoneBase: 2,         // base keystone level
     rooms: [
-      { type: 'hallway', enemies: ['goblin', 'goblin', 'bandit'] },
-      { type: 'arena', enemies: ['goblin', 'goblin', 'bandit', 'bandit', 'enforcer'] },
-      { type: 'hallway', enemies: ['bandit', 'enforcer'] },
-      { type: 'boss', boss: 'mr_smite' },
-      { type: 'hallway', enemies: ['pirate', 'pirate', 'goblin', 'enforcer'] },
-      { type: 'arena', enemies: ['pirate', 'pirate', 'pirate', 'enforcer', 'enforcer'] },
-      { type: 'boss', boss: 'captain_greenskin' },
+      { type: 'hallway', enemies: ['imp', 'imp', 'imp'] },
+      { type: 'arena', enemies: ['imp', 'imp', 'imp', 'hellknight', 'hellknight'] },
+      { type: 'hallway', enemies: ['imp', 'hellknight'] },
+      { type: 'boss', boss: 'pitlord' },
+      { type: 'hallway', enemies: ['imp', 'imp', 'imp', 'hellknight'] },
+      { type: 'arena', enemies: ['imp', 'imp', 'hellknight', 'hellknight', 'hellknight'] },
+      { type: 'boss', boss: 'pitlord' },
     ],
   },
 };
@@ -262,45 +262,37 @@ export const DUNGEONS = {
  * Base stats for enemy types. Scaled by keystone level.
  */
 export const ENEMIES = {
-  goblin: {
-    name: 'Goblin',
+  imp: {
+    name: 'Imp',
     type: 'trash',
-    stats: { hp: 30, speed: 40, power: 0.5, defense: 0.5 },
-    attacks: ['goblin_swipe'],
+    stats: { hp: 30, speed: 50, power: 0.5, defense: 0.4 },
+    attacks: ['imp_scratch'],
     aggroRange: 80,
     attackRange: 16,
-    attackCooldown: 1200,
+    attackCooldown: 900,
   },
-  bandit: {
-    name: 'Bandit',
-    type: 'trash',
-    stats: { hp: 45, speed: 35, power: 0.8, defense: 0.7 },
-    attacks: ['bandit_slash'],
-    aggroRange: 90,
-    attackRange: 18,
-    attackCooldown: 1500,
-  },
-  enforcer: {
-    name: 'Enforcer',
+  hellknight: {
+    name: 'Hellknight',
     type: 'elite',
-    stats: { hp: 100, speed: 25, power: 1.2, defense: 1.2 },
-    attacks: ['enforcer_slam', 'enforcer_charge'],
+    stats: { hp: 120, speed: 30, power: 1.3, defense: 1.3 },
+    attacks: ['hellknight_slash', 'hellknight_charge'],
     aggroRange: 100,
     attackRange: 22,
     attackCooldown: 2000,
   },
-  mr_smite: {
-    name: 'Mr. Smite',
+  pitlord: {
+    name: 'Pitlord',
     type: 'boss',
-    stats: { hp: 500, speed: 30, power: 1.5, defense: 1.5 },
-    attacks: ['smite_cleave', 'smite_stomp'],
+    frameSize: 64,
+    stats: { hp: 500, speed: 20, power: 1.8, defense: 1.6 },
+    attacks: ['pitlord_cleave', 'pitlord_stomp'],
     phases: [
-      { hpThreshold: 0.6, attack: 'smite_whirlwind' },
-      { hpThreshold: 0.3, attack: 'smite_enrage' },
+      { hpThreshold: 0.6, attack: 'pitlord_hellfire' },
+      { hpThreshold: 0.3, attack: 'pitlord_enrage' },
     ],
     aggroRange: 120,
-    attackRange: 24,
-    attackCooldown: 1800,
+    attackRange: 28,
+    attackCooldown: 2200,
   },
 };
 

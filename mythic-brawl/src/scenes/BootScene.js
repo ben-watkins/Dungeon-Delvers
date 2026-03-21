@@ -1,27 +1,25 @@
 /**
  * BOOT SCENE — Asset loading and initialization
- * 
- * This scene runs first. It loads all sprites, tilesets, audio, and
- * generates placeholder assets for development.
- * 
+ *
+ * This scene runs first. It loads all sprite sheets, environment art,
+ * and defines animation frame mappings.
+ *
  * SPRITE SHEET CONVENTION:
- *   All character sprites are loaded as sprite sheets with consistent frame sizes.
- *   Frame size: 48x48 pixels (gives good detail at 4x scale)
+ *   All character sprites are 14 columns × 12 rows.
+ *   Frame size: 48x48 (64x64 for pitlord)
  *   Each row is one animation:
- *     Row 0: Idle (4 frames)
- *     Row 1: Walk (6 frames)
- *     Row 2: Attack 1 (6 frames)
- *     Row 3: Attack 2 (7 frames)
- *     Row 4: Attack 3 (8-10 frames)
- *     Row 5: Special 1 (8 frames)
- *     Row 6: Special 2 (8 frames)
- *     Row 7: Hitstun (3 frames)
- *     Row 8: Knockdown (4 frames)
- *     Row 9: Getup (4 frames)
- *     Row 10: Death (6 frames)
- *     Row 11: Block (2 frames) [warrior only]
- * 
- * Until real sprites are created, we generate colored rectangle placeholders.
+ *     Row 0: Idle (8 frames)
+ *     Row 1: Walk (8 frames)
+ *     Row 2: Attack 1 (8 frames)
+ *     Row 3: Attack 2 (8 frames)
+ *     Row 4: Attack 3 (12 frames)
+ *     Row 5: Special 1 (10 frames)
+ *     Row 6: Special 2 (10 frames)
+ *     Row 7: Hitstun (4 frames)
+ *     Row 8: Knockdown (6 frames)
+ *     Row 9: Getup (6 frames)
+ *     Row 10: Death (8 frames)
+ *     Row 11: Block (4 frames)
  */
 
 import Phaser from 'phaser';
@@ -61,6 +59,13 @@ export class BootScene extends Phaser.Scene {
     this.load.spritesheet('mage', 'assets/sprites/mage_side_right.png', { frameWidth: 48, frameHeight: 48 });
 
     // =====================================================
+    // ENEMY SPRITE SHEETS — 14 columns × 12 rows
+    // =====================================================
+    this.load.spritesheet('imp', 'assets/sprites/imp_side_right.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('hellknight', 'assets/sprites/hellknight_side_right.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('pitlord', 'assets/sprites/pitlord_side_right.png', { frameWidth: 64, frameHeight: 64 });
+
+    // =====================================================
     // DUNGEON ENVIRONMENT ART
     // =====================================================
     this.load.image('dungeon_bg', 'assets/dungeon_bg.png');
@@ -69,8 +74,8 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
-    // Generate placeholder sprites for development
-    this.generatePlaceholders();
+    // Generate UI helper textures
+    this.generateUITextures();
 
     // Define animations
     this.createAnimations();
@@ -80,69 +85,9 @@ export class BootScene extends Phaser.Scene {
   }
 
   /**
-   * Generate colored rectangle sprites for each class.
-   * These are replaced by real pixel art sprite sheets later.
-   * 
-   * Each placeholder is a 48x48 canvas with the class color and a label.
+   * Generate small utility textures (shadow, health bars) that don't need sprite sheets.
    */
-  generatePlaceholders() {
-    // Only generate placeholders for enemies — player classes use real sprite sheets
-    const classes = [
-      { key: 'goblin', color: 0x6a8a40, label: 'g' },
-      { key: 'bandit', color: 0x8a6040, label: 'b' },
-      { key: 'enforcer', color: 0x884444, label: 'E' },
-      { key: 'mr_smite', color: 0xcc4444, label: 'B' },
-    ];
-
-    for (const cls of classes) {
-      const size = cls.key === 'mr_smite' ? 64 : 48;
-      const frameCount = 12; // Max frames for any animation row
-      const rowCount = 12;   // Animation rows
-
-      // Create a texture with all animation frames
-      const canvas = this.textures.createCanvas(cls.key, size * frameCount, size * rowCount);
-      const ctx = canvas.getContext();
-
-      for (let row = 0; row < rowCount; row++) {
-        for (let frame = 0; frame < frameCount; frame++) {
-          const x = frame * size;
-          const y = row * size;
-
-          // Body rectangle
-          ctx.fillStyle = `#${cls.color.toString(16).padStart(6, '0')}`;
-          const bodyW = size * 0.5;
-          const bodyH = size * 0.7;
-          ctx.fillRect(x + (size - bodyW) / 2, y + (size - bodyH), bodyW, bodyH);
-
-          // Head circle
-          const headR = size * 0.15;
-          ctx.beginPath();
-          ctx.arc(x + size / 2, y + size * 0.2, headR, 0, Math.PI * 2);
-          ctx.fill();
-
-          // Slight variation per frame for idle bob
-          if (row === 0 && frame % 2 === 1) {
-            ctx.fillStyle = 'rgba(255,255,255,0.1)';
-            ctx.fillRect(x + (size - bodyW) / 2, y + (size - bodyH), bodyW, bodyH);
-          }
-
-          // Attack frames — extend arm
-          if (row >= 2 && row <= 6 && frame >= 2 && frame <= 4) {
-            ctx.fillStyle = `#${cls.color.toString(16).padStart(6, '0')}`;
-            ctx.fillRect(x + size * 0.75, y + size * 0.35, size * 0.2, size * 0.1);
-          }
-
-          // Label
-          ctx.fillStyle = '#ffffff';
-          ctx.font = `${Math.floor(size * 0.25)}px monospace`;
-          ctx.textAlign = 'center';
-          ctx.fillText(cls.label, x + size / 2, y + size * 0.55);
-        }
-      }
-
-      canvas.refresh();
-    }
-
+  generateUITextures() {
     // Shadow ellipse
     const shadowCanvas = this.textures.createCanvas('shadow', 24, 8);
     const sctx = shadowCanvas.getContext();
@@ -168,108 +113,93 @@ export class BootScene extends Phaser.Scene {
 
   /**
    * Create animation definitions for all characters.
-   * When real sprite sheets are loaded, update frame ranges here.
+   * All sheets are 14 columns × 12 rows. Frame counts per row match the sprite sheet spec.
    */
   createAnimations() {
-    // Real sprite sheets: 14 columns × 12 rows of 48×48
-    // Placeholder enemy sheets: 12 columns × 12 rows
-    const realSheetChars = ['warrior', 'priest', 'rogue', 'mage'];
-    const placeholderChars = ['goblin', 'bandit', 'enforcer', 'mr_smite'];
-    const characters = [...realSheetChars, ...placeholderChars];
+    const FRAMES_PER_ROW = 14;
+    const characters = ['warrior', 'priest', 'rogue', 'mage', 'imp', 'hellknight', 'pitlord'];
+
+    // Helper: generate frame numbers for a row
+    const rowFrames = (row, count) => {
+      const frames = [];
+      for (let i = 0; i < count; i++) {
+        frames.push(row * FRAMES_PER_ROW + i);
+      }
+      return frames;
+    };
 
     for (const char of characters) {
-      const size = char === 'mr_smite' ? 64 : 48;
-      const framesPerRow = realSheetChars.includes(char) ? 14 : 12;
-
-      // Helper: generate frame numbers for a row
-      const rowFrames = (row, count) => {
-        const frames = [];
-        for (let i = 0; i < count; i++) {
-          frames.push(row * framesPerRow + i);
-        }
-        return frames;
-      };
-
-      // Add the spritesheet config to the texture for placeholder-generated textures only
-      if (placeholderChars.includes(char)) {
-        this.textures.get(char).add(0, 0, 0, 0, size * framesPerRow, size * 12);
-      }
-
-      // Idle
+      // Row 0: Idle (8 frames)
       this.anims.create({
         key: `${char}_idle`,
-        frames: this.anims.generateFrameNumbers(char, {
-          frames: rowFrames(0, 4),
-        }),
+        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(0, 8) }),
         frameRate: 6,
         repeat: -1,
       });
 
-      // Walk
+      // Row 1: Walk (8 frames)
       this.anims.create({
         key: `${char}_walk`,
-        frames: this.anims.generateFrameNumbers(char, {
-          frames: rowFrames(1, 6),
-        }),
+        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(1, 8) }),
         frameRate: 8,
         repeat: -1,
       });
 
-      // Attack combo (rows 2-4)
+      // Rows 2-4: Attack combo (8, 8, 12 frames)
+      const atkFrameCounts = [8, 8, 12];
       for (let i = 0; i < 3; i++) {
-        const frameCount = [6, 7, 10][i];
         this.anims.create({
           key: `${char}_atk${i + 1}`,
-          frames: this.anims.generateFrameNumbers(char, {
-            frames: rowFrames(2 + i, frameCount),
-          }),
+          frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(2 + i, atkFrameCounts[i]) }),
           frameRate: 12,
           repeat: 0,
         });
       }
 
-      // Specials (rows 5-6)
+      // Row 5: Special 1 (10 frames)
       this.anims.create({
         key: `${char}_special1`,
-        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(5, 8) }),
+        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(5, 10) }),
         frameRate: 10,
         repeat: 0,
       });
+
+      // Row 6: Special 2 (10 frames)
       this.anims.create({
         key: `${char}_special2`,
-        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(6, 8) }),
+        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(6, 10) }),
         frameRate: 10,
         repeat: 0,
       });
 
-      // Hitstun
+      // Row 7: Hitstun (4 frames)
       this.anims.create({
         key: `${char}_hitstun`,
-        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(7, 3) }),
+        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(7, 4) }),
         frameRate: 8,
         repeat: 0,
       });
 
-      // Knockdown
+      // Row 8: Knockdown (6 frames)
       this.anims.create({
         key: `${char}_knockdown`,
-        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(8, 4) }),
+        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(8, 6) }),
         frameRate: 8,
         repeat: 0,
       });
 
-      // Getup
+      // Row 9: Getup (6 frames)
       this.anims.create({
         key: `${char}_getup`,
-        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(9, 4) }),
+        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(9, 6) }),
         frameRate: 8,
         repeat: 0,
       });
 
-      // Death
+      // Row 10: Death (8 frames)
       this.anims.create({
         key: `${char}_death`,
-        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(10, 6) }),
+        frames: this.anims.generateFrameNumbers(char, { frames: rowFrames(10, 8) }),
         frameRate: 6,
         repeat: 0,
       });

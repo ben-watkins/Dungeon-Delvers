@@ -43,7 +43,7 @@ export class Player extends Phaser.GameObjects.Container {
     this.comboTimer = 0;
     this.comboWindow = 500;  // ms to input next combo hit
     this.inputBuffer = null;  // Buffered action to execute when current state allows
-    this.cooldowns = { special1: 0, special2: 0, special3: 0 };
+    this.cooldowns = { special1: 0, special2: 0, special3: 0, special4: 0, special5: 0 };
     this.hitStopTimer = 0;
     this.knockbackVelocity = { x: 0, y: 0 };
     this.invulnerable = false;
@@ -100,6 +100,8 @@ export class Player extends Phaser.GameObjects.Container {
     this.keys.sprint = kb.addKey('SHIFT');
     this.keys.tab = kb.addKey('TAB');
     this.keys.special3 = kb.addKey('NUMPAD_SEVEN');
+    this.keys.special4 = kb.addKey('NUMPAD_FOUR');
+    this.keys.special5 = kb.addKey('NUMPAD_FIVE');
 
     // Tab target reference (set by DungeonScene)
     this.tabTarget = null;
@@ -109,6 +111,8 @@ export class Player extends Phaser.GameObjects.Container {
     this.special1JustPressed = false;
     this.special2JustPressed = false;
     this.special3JustPressed = false;
+    this.special4JustPressed = false;
+    this.special5JustPressed = false;
     this.tabJustPressed = false;
 
     // Gamepad — tracks previous frame button state for just-pressed detection
@@ -141,8 +145,14 @@ export class Player extends Phaser.GameObjects.Container {
           if (this.special3JustPressed && this.cooldowns.special3 <= 0 && this.classData.specials.special3) {
             this.fsm.transition('special3');
           }
+          if (this.special4JustPressed && this.cooldowns.special4 <= 0 && this.classData.specials.special4) {
+            this.fsm.transition('special4');
+          }
+          if (this.special5JustPressed && this.cooldowns.special5 <= 0 && this.classData.specials.special5) {
+            this.fsm.transition('special5');
+          }
         },
-        transitions: { walk: 'walk', attack: 'attack', special1: 'special1', special2: 'special2', special3: 'special3', hitstun: 'hitstun', death: 'death' },
+        transitions: { walk: 'walk', attack: 'attack', special1: 'special1', special2: 'special2', special3: 'special3', special4: 'special4', special5: 'special5', hitstun: 'hitstun', death: 'death' },
       },
 
       walk: {
@@ -179,7 +189,8 @@ export class Player extends Phaser.GameObjects.Container {
           this.sprite.play(`${this.classKey}_atk${this.comboIndex + 1}`, true);
           this.currentAttack = attackData;
           this.attackFrame = 0;
-          this.attackHit = false;  // Track if this attack has hit anything
+          this.attackHit = false;
+          this.beamFired = false;
 
           // Auto-face tab target
           if (this.tabTarget && this.tabTarget.hp > 0) {
@@ -194,7 +205,6 @@ export class Player extends Phaser.GameObjects.Container {
           this.fsm.locked = true;
 
           this.sprite.once('animationcomplete', () => {
-            // Check for buffered combo continuation
             if (this.inputBuffer === 'attack' && attackData.canCancel >= 0) {
               this.comboIndex = (this.comboIndex + 1) % combo.length;
               this.comboTimer = this.comboWindow;
@@ -211,8 +221,42 @@ export class Player extends Phaser.GameObjects.Container {
         update(dt) {
           this.attackFrame++;
 
-          // Create hitbox during active frames
-          if (this.currentAttack) {
+          // Priest ranged beam attack — fires at mid-animation instead of melee hitbox
+          if (this.classData.rangedAttack && !this.beamFired) {
+            if (this.attackFrame >= 3) {
+              this.beamFired = true;
+              const ranged = this.classData.rangedAttack;
+              const enemies = this.scene.getAliveEnemies();
+              let totalDamage = 0;
+
+              for (const enemy of enemies) {
+                const dmg = ranged.damage * this.power * 10;
+                enemy.takeDamage(dmg, { x: 0, y: 0 }, 80);
+                totalDamage += dmg;
+
+                this.scene.events.emit('priestBeam', {
+                  source: this,
+                  target: enemy,
+                  color: ranged.beamColor,
+                  beamCount: ranged.beamCount,
+                });
+              }
+
+              // Heal all allies with total damage dealt
+              if (totalDamage > 0 && ranged.healPercent) {
+                const healAmount = Math.round(totalDamage * ranged.healPercent);
+                const party = this.scene.getPartyMembers();
+                for (const member of party) {
+                  if (member.hp <= 0 || member.hp >= member.maxHp) continue;
+                  member.hp = Math.min(member.maxHp, member.hp + healAmount);
+                  this.scene.events.emit('aiHeal', {
+                    healer: this, target: member, amount: healAmount,
+                  });
+                }
+              }
+            }
+          } else if (this.currentAttack) {
+            // Melee hitbox for non-ranged classes
             const { activeStart, activeEnd, hitbox } = this.currentAttack;
             if (this.attackFrame >= activeStart && this.attackFrame <= activeEnd) {
               this.activateHitbox(hitbox);
@@ -299,10 +343,245 @@ export class Player extends Phaser.GameObjects.Container {
           const special = this.classData.specials.special3;
           this.cooldowns.special3 = special.cooldown;
           this.fsm.locked = true;
+          this.special3Class = this.classKey;
 
-          // Determine leap target position
-          let targetX = this.x + (this.facingRight ? 60 : -60);
+          if (this.classKey === 'priest') {
+            // --- PRIEST: Divine Ascension — levitate with wings, lightning heals ---
+            this.sprite.play(`${this.classKey}_special1`, true);
+            this.ascensionTimer = 0;
+            this.ascensionDuration = special.duration;
+            this.ascensionBlobTimer = 0;
+            this.ascensionBlobInterval = special.duration / special.blobCount;
+            this.ascensionBlobsLobbed = 0;
+            this.ascensionSpecial = special;
+
+            // Bright body glow
+            this.ascensionGlow = this.scene.add.circle(this.x, this.groundY - 20, 18, 0xffffcc, 0.35);
+            this.ascensionGlow.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+            // Outer radiance
+            this.ascensionRadiance = this.scene.add.circle(this.x, this.groundY - 20, 30, 0xffffaa, 0.12);
+            this.ascensionRadiance.setDepth(GAME_CONFIG.layers.foregroundDecor - 1);
+
+            // Wings — drawn as graphics, updated each frame
+            this.ascensionWings = this.scene.add.graphics();
+            this.ascensionWings.setDepth(GAME_CONFIG.layers.foregroundDecor - 1);
+
+            // Sprite glow tint
+            this.sprite.setTint(0xffffdd);
+
+            // Sparkle aura particles
+            this.ascensionAura = this.scene.add.particles(this.x, this.groundY - 20, 'vfx_circle', {
+              speed: { min: 8, max: 20 },
+              angle: { min: 0, max: 360 },
+              lifespan: 400,
+              tint: 0xffffaa,
+              alpha: { start: 0.6, end: 0 },
+              scale: { start: 0.5, end: 0.1 },
+              frequency: 60,
+              emitting: true,
+            });
+            this.ascensionAura.setDepth(GAME_CONFIG.layers.foregroundDecor);
+          } else {
+            // --- WARRIOR: Heroic Leap ---
+            let targetX = this.x + (this.facingRight ? 60 : -60);
+            let targetY = this.groundY;
+            if (this.tabTarget && this.tabTarget.hp > 0) {
+              targetX = this.tabTarget.x;
+              targetY = this.tabTarget.groundY;
+              this.facingRight = targetX > this.x;
+              this.sprite.setFlipX(!this.facingRight);
+            }
+
+            this.sprite.play(`${this.classKey}_special1`, true);
+            this.leapStartX = this.x;
+            this.leapStartY = this.groundY;
+            this.leapTargetX = targetX;
+            this.leapTargetY = targetY;
+            this.leapTimer = 0;
+            this.leapDuration = 400;
+            this.leapSpecial = special;
+
+            this.scene.events.emit('playerAttack');
+          }
+        },
+        update(dt) {
+          if (this.special3Class === 'priest') {
+            // --- PRIEST: Divine Ascension update ---
+            this.ascensionTimer += dt;
+
+            // Levitate — rise then hover with gentle bob
+            const riseT = Math.min(this.ascensionTimer / 400, 1);
+            const bob = Math.sin(this.ascensionTimer * 0.005) * 3;
+            this.jumpZ = riseT * 35 + bob;
+            this.y = this.groundY - this.jumpZ;
+
+            const cx = this.x;
+            const cy = this.groundY - this.jumpZ - 6;
+
+            // Update glow + radiance position
+            if (this.ascensionGlow) {
+              this.ascensionGlow.setPosition(cx, cy);
+              this.ascensionGlow.setAlpha(0.25 + Math.sin(this.ascensionTimer * 0.01) * 0.15);
+              this.ascensionGlow.setScale(1 + Math.sin(this.ascensionTimer * 0.008) * 0.15);
+            }
+            if (this.ascensionRadiance) {
+              this.ascensionRadiance.setPosition(cx, cy);
+              this.ascensionRadiance.setAlpha(0.08 + Math.sin(this.ascensionTimer * 0.006) * 0.06);
+            }
+            if (this.ascensionAura) {
+              this.ascensionAura.setPosition(cx, cy);
+            }
+
+            // Draw animated wings at shoulder height (behind the character)
+            if (this.ascensionWings) {
+              this.ascensionWings.clear();
+              const wingFlap = Math.sin(this.ascensionTimer * 0.012) * 6;
+              // Shoulders: sprite is 48px tall, origin at bottom, so shoulders ~32px up from feet
+              const wy = this.groundY - this.jumpZ - 32;
+
+              // Left wing — main feather, mid feather, lower feather
+              this.ascensionWings.lineStyle(2, 0xffffcc, 0.8);
+              this.ascensionWings.beginPath();
+              this.ascensionWings.moveTo(cx - 4, wy);
+              this.ascensionWings.lineTo(cx - 18, wy - 12 - wingFlap);
+              this.ascensionWings.lineTo(cx - 28, wy - 8 - wingFlap);
+              this.ascensionWings.lineTo(cx - 32, wy - 2 - wingFlap * 0.5);
+              this.ascensionWings.strokePath();
+              // Mid feather
+              this.ascensionWings.lineStyle(2, 0xffffdd, 0.6);
+              this.ascensionWings.beginPath();
+              this.ascensionWings.moveTo(cx - 4, wy + 3);
+              this.ascensionWings.lineTo(cx - 16, wy - 5 - wingFlap * 0.8);
+              this.ascensionWings.lineTo(cx - 26, wy - 1 - wingFlap * 0.6);
+              this.ascensionWings.strokePath();
+              // Lower feather
+              this.ascensionWings.lineStyle(1, 0xffffee, 0.4);
+              this.ascensionWings.beginPath();
+              this.ascensionWings.moveTo(cx - 4, wy + 6);
+              this.ascensionWings.lineTo(cx - 14, wy + 2 - wingFlap * 0.4);
+              this.ascensionWings.lineTo(cx - 22, wy + 5 - wingFlap * 0.3);
+              this.ascensionWings.strokePath();
+
+              // Right wing — mirror
+              this.ascensionWings.lineStyle(2, 0xffffcc, 0.8);
+              this.ascensionWings.beginPath();
+              this.ascensionWings.moveTo(cx + 4, wy);
+              this.ascensionWings.lineTo(cx + 18, wy - 12 - wingFlap);
+              this.ascensionWings.lineTo(cx + 28, wy - 8 - wingFlap);
+              this.ascensionWings.lineTo(cx + 32, wy - 2 - wingFlap * 0.5);
+              this.ascensionWings.strokePath();
+              this.ascensionWings.lineStyle(2, 0xffffdd, 0.6);
+              this.ascensionWings.beginPath();
+              this.ascensionWings.moveTo(cx + 4, wy + 3);
+              this.ascensionWings.lineTo(cx + 16, wy - 5 - wingFlap * 0.8);
+              this.ascensionWings.lineTo(cx + 26, wy - 1 - wingFlap * 0.6);
+              this.ascensionWings.strokePath();
+              this.ascensionWings.lineStyle(1, 0xffffee, 0.4);
+              this.ascensionWings.beginPath();
+              this.ascensionWings.moveTo(cx + 4, wy + 6);
+              this.ascensionWings.lineTo(cx + 14, wy + 2 - wingFlap * 0.4);
+              this.ascensionWings.lineTo(cx + 22, wy + 5 - wingFlap * 0.3);
+              this.ascensionWings.strokePath();
+            }
+
+            // Healing lightning bolts at intervals
+            this.ascensionBlobTimer += dt;
+            if (this.ascensionBlobTimer >= this.ascensionBlobInterval &&
+                this.ascensionBlobsLobbed < this.ascensionSpecial.blobCount) {
+              this.ascensionBlobTimer -= this.ascensionBlobInterval;
+              this.ascensionBlobsLobbed++;
+
+              const party = this.scene.getPartyMembers();
+              const alive = party.filter(m => m.hp > 0);
+              if (alive.length > 0) {
+                const target = alive[Phaser.Math.Between(0, alive.length - 1)];
+                const healAmt = this.ascensionSpecial.healPerBlob;
+                target.hp = Math.min(target.maxHp, target.hp + healAmt);
+
+                // Emit healing lightning VFX
+                this.scene.events.emit('priestHealLightning', {
+                  source: this,
+                  target: target,
+                  healAmount: healAmt,
+                });
+              }
+            }
+
+            // Loop animation
+            if (!this.sprite.anims.isPlaying) {
+              this.sprite.play(`${this.classKey}_special1`, true);
+            }
+
+            // End after duration
+            if (this.ascensionTimer >= this.ascensionDuration) {
+              this.jumpZ = 0;
+              this.y = this.groundY;
+              this.sprite.clearTint();
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            }
+          } else {
+            // --- WARRIOR: Heroic Leap update ---
+            this.leapTimer += dt;
+            const t = Math.min(this.leapTimer / this.leapDuration, 1);
+
+            this.x = Phaser.Math.Linear(this.leapStartX, this.leapTargetX, t);
+            this.groundY = clampToGround(
+              Phaser.Math.Linear(this.leapStartY, this.leapTargetY, t)
+            );
+            this.jumpZ = Math.sin(t * Math.PI) * 40;
+            this.y = this.groundY - this.jumpZ;
+
+            if (t >= 1) {
+              this.jumpZ = 0;
+              this.y = this.groundY;
+
+              const enemies = this.scene.getAliveEnemies();
+              const special = this.leapSpecial;
+              for (const enemy of enemies) {
+                const dist = Phaser.Math.Distance.Between(
+                  this.x, this.groundY, enemy.x, enemy.groundY
+                );
+                if (dist <= special.radius) {
+                  enemy.takeDamage(special.damage * this.power * 10, { x: 0, y: 0 }, 0);
+                  if (special.stun && enemy.applyStun) {
+                    enemy.applyStun(special.stunDuration, { x: 0, y: 0 });
+                  }
+                }
+              }
+
+              this.scene.events.emit('playerSpecial', {
+                player: this, special: special, key: 'special3',
+              });
+              this.scene.cameras.main.shake(150, 0.006);
+
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            }
+          }
+        },
+        exit() {
+          if (this.ascensionGlow) { this.ascensionGlow.destroy(); this.ascensionGlow = null; }
+          if (this.ascensionRadiance) { this.ascensionRadiance.destroy(); this.ascensionRadiance = null; }
+          if (this.ascensionWings) { this.ascensionWings.destroy(); this.ascensionWings = null; }
+          if (this.ascensionAura) { this.ascensionAura.destroy(); this.ascensionAura = null; }
+          this.sprite.clearTint();
+          this.jumpZ = 0;
+        },
+        transitions: { idle: 'idle', death: 'death' },
+      },
+
+      special4: {
+        enter() {
+          const special = this.classData.specials.special4;
+          this.cooldowns.special4 = special.cooldown;
+          this.fsm.locked = true;
+
+          // Determine charge target
+          let targetX = this.x + (this.facingRight ? 120 : -120);
           let targetY = this.groundY;
+
           if (this.tabTarget && this.tabTarget.hp > 0) {
             targetX = this.tabTarget.x;
             targetY = this.tabTarget.groundY;
@@ -310,68 +589,237 @@ export class Player extends Phaser.GameObjects.Container {
             this.sprite.setFlipX(!this.facingRight);
           }
 
-          // Leap animation — use special1 anim as visual stand-in
-          this.sprite.play(`${this.classKey}_special1`, true);
+          this.chargeTargetX = targetX;
+          this.chargeTargetY = targetY;
+          this.chargeSpecial = special;
+          // Charge speed: 120% of normal speed, scaled to pixels/sec (not per-frame)
+          this.chargeSpeed = this.speed * special.speedMultiplier * 6;
+          this.chargeHit = false;
 
-          // Store leap data
-          this.leapStartX = this.x;
-          this.leapStartY = this.groundY;
-          this.leapTargetX = targetX;
-          this.leapTargetY = targetY;
-          this.leapTimer = 0;
-          this.leapDuration = 400; // ms
-          this.leapSpecial = special;
+          // Play walk anim at double speed for charging look
+          this.sprite.play(`${this.classKey}_walk`, true);
+          this.sprite.anims.msPerFrame = 30;
 
-          // Signal combat started
+          // Smoke trail emitter — follows the player during charge
+          this.chargeSmoke = this.scene.add.particles(this.x, this.groundY, 'vfx_pixel_4', {
+            speed: { min: 5, max: 15 },
+            lifespan: 300,
+            tint: 0x666688,
+            alpha: { start: 0.6, end: 0 },
+            scale: { start: 1, end: 0.3 },
+            frequency: 30,
+            emitting: true,
+          });
+          this.chargeSmoke.setDepth(GAME_CONFIG.layers.entities + this.groundY - 1);
+
           this.scene.events.emit('playerAttack');
         },
         update(dt) {
-          this.leapTimer += dt;
-          const t = Math.min(this.leapTimer / this.leapDuration, 1);
+          const dx = this.chargeTargetX - this.x;
+          const dy = this.chargeTargetY - this.groundY;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const step = this.chargeSpeed * (dt / 1000);
 
-          // Horizontal/depth interpolation
-          this.x = Phaser.Math.Linear(this.leapStartX, this.leapTargetX, t);
-          this.groundY = clampToGround(
-            Phaser.Math.Linear(this.leapStartY, this.leapTargetY, t)
-          );
+          // Update smoke trail position
+          if (this.chargeSmoke) {
+            this.chargeSmoke.setPosition(this.x, this.groundY);
+          }
 
-          // Parabolic arc for jump height
-          this.jumpZ = Math.sin(t * Math.PI) * 40;
-          this.y = this.groundY - this.jumpZ;
+          if (dist <= step + 6 && !this.chargeHit) {
+            this.chargeHit = true;
 
-          // Landing
-          if (t >= 1) {
-            this.jumpZ = 0;
+            // Stop smoke
+            if (this.chargeSmoke) {
+              this.chargeSmoke.stop();
+              this.scene.time.delayedCall(400, () => {
+                if (this.chargeSmoke) { this.chargeSmoke.destroy(); this.chargeSmoke = null; }
+              });
+            }
+
+            // Snap to target
+            this.x = this.chargeTargetX;
+            this.groundY = clampToGround(this.chargeTargetY);
             this.y = this.groundY;
 
-            // AoE stun + damage on landing
+            // Play bash animation
+            this.sprite.play(`${this.classKey}_special2`, true);
+
+            // Hit all enemies in range with size-based knockback
+            const special = this.chargeSpecial;
             const enemies = this.scene.getAliveEnemies();
-            const special = this.leapSpecial;
+            for (const enemy of enemies) {
+              const eDist = Phaser.Math.Distance.Between(
+                this.x, this.groundY, enemy.x, enemy.groundY
+              );
+              if (eDist <= 30) {
+                const enemySize = enemy.enemyData?.size || 'medium';
+                const knockForce = special.knockbackBySize[enemySize] ?? 0;
+                const dir = {
+                  x: (enemy.x - this.x) / (eDist || 1) * knockForce,
+                  y: ((enemy.groundY - this.groundY) / (eDist || 1)) * knockForce * 0.3,
+                };
+
+                enemy.takeDamage(special.damage * this.power * 10, dir, 0);
+                if (knockForce > 0 && enemy.applyKnockdown) {
+                  enemy.applyKnockdown(special.knockdownDuration || 1500, dir);
+                }
+              }
+            }
+
+            // VFX + shake
+            this.scene.events.emit('playerSpecial', {
+              player: this, special: special, key: 'special4',
+            });
+            this.scene.cameras.main.shake(100, 0.004);
+
+            this.sprite.once('animationcomplete', () => {
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            });
+          } else if (!this.chargeHit) {
+            // Charge at high speed toward target
+            const nx = dx / dist;
+            const ny = dy / dist;
+            this.x += nx * step;
+            this.groundY = clampToGround(this.groundY + ny * step * 0.6);
+            this.y = this.groundY;
+          }
+        },
+        exit() {
+          // Clean up smoke if state exits early (e.g. death)
+          if (this.chargeSmoke) {
+            this.chargeSmoke.destroy();
+            this.chargeSmoke = null;
+          }
+        },
+        transitions: { idle: 'idle', death: 'death' },
+      },
+
+      special5: {
+        enter() {
+          const special = this.classData.specials.special5;
+          this.fsm.locked = false; // Allow movement during whirlwind
+
+          // Auto-face tab target
+          if (this.tabTarget && this.tabTarget.hp > 0) {
+            this.facingRight = this.tabTarget.x > this.x;
+            this.sprite.setFlipX(!this.facingRight);
+          }
+          this.whirlwindSpecial = special;
+          this.whirlwindTickTimer = 0;
+          this.whirlwindAngle = 0;
+          this.whirlwindDuration = 0;
+          this.whirlwindMaxDuration = 5000; // 5 second max
+
+          // Play attack anim looping fast for spinning look
+          this.sprite.play(`${this.classKey}_atk1`, true);
+          this.sprite.anims.msPerFrame = 50;
+
+          this.scene.events.emit('playerAttack');
+
+          // Spinning VFX — horizontal ellipse slash ring
+          this.whirlwindGfx = this.scene.add.graphics();
+          this.whirlwindGfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+          // Spark particles spraying outward
+          this.whirlwindParticles = this.scene.add.particles(this.x, this.groundY, 'vfx_pixel', {
+            speed: { min: 25, max: 55 },
+            angle: { min: 0, max: 360 },
+            lifespan: 180,
+            tint: 0xccddff,
+            alpha: { start: 0.7, end: 0 },
+            frequency: 35,
+            emitting: true,
+          });
+          this.whirlwindParticles.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        },
+        update(dt) {
+          const special = this.whirlwindSpecial;
+          this.whirlwindDuration += dt;
+
+          // Stop: key released or max duration reached
+          if (!this.keys.special5.isDown || this.whirlwindDuration >= this.whirlwindMaxDuration) {
+            this.cooldowns.special5 = special.cooldown;
+            this.fsm.transition('idle');
+            return;
+          }
+
+          // Allow movement while spinning
+          this.handleMovementInput(dt);
+
+          // Advance spin angle
+          this.whirlwindAngle += dt * 0.025;
+
+          // Draw horizontal ellipse slash ring at waist height
+          const cx = this.x;
+          const cy = this.groundY - 18;
+          this.whirlwindGfx.clear();
+
+          // Outer slash arc — drawn as horizontal ellipse segments
+          const r = 28;
+          const ry = 10; // Squashed vertically for horizontal/top-down look
+          this.whirlwindGfx.lineStyle(3, 0xeeeeff, 0.85);
+          this.whirlwindGfx.beginPath();
+          for (let i = 0; i < 20; i++) {
+            const a = this.whirlwindAngle + (i / 20) * Math.PI * 1.4;
+            const px = cx + Math.cos(a) * r;
+            const py = cy + Math.sin(a) * ry;
+            if (i === 0) this.whirlwindGfx.moveTo(px, py);
+            else this.whirlwindGfx.lineTo(px, py);
+          }
+          this.whirlwindGfx.strokePath();
+
+          // Second arc offset for double-blade look
+          this.whirlwindGfx.lineStyle(2, 0x88bbff, 0.6);
+          this.whirlwindGfx.beginPath();
+          for (let i = 0; i < 20; i++) {
+            const a = this.whirlwindAngle + Math.PI + (i / 20) * Math.PI * 1.4;
+            const px = cx + Math.cos(a) * (r + 4);
+            const py = cy + Math.sin(a) * (ry + 2);
+            if (i === 0) this.whirlwindGfx.moveTo(px, py);
+            else this.whirlwindGfx.lineTo(px, py);
+          }
+          this.whirlwindGfx.strokePath();
+
+          // Update particle position to follow player
+          if (this.whirlwindParticles) {
+            this.whirlwindParticles.setPosition(cx, cy);
+          }
+
+          // Damage tick
+          this.whirlwindTickTimer += dt;
+          if (this.whirlwindTickTimer >= special.tickInterval) {
+            this.whirlwindTickTimer -= special.tickInterval;
+
+            const enemies = this.scene.getAliveEnemies();
             for (const enemy of enemies) {
               const dist = Phaser.Math.Distance.Between(
                 this.x, this.groundY, enemy.x, enemy.groundY
               );
               if (dist <= special.radius) {
-                enemy.takeDamage(
-                  special.damage * this.power * 10,
-                  { x: 0, y: 0 },
-                  special.stunDuration
-                );
+                const dir = {
+                  x: (enemy.x - this.x) / (dist || 1) * special.knockback,
+                  y: ((enemy.groundY - this.groundY) / (dist || 1)) * special.knockback * 0.3,
+                };
+                enemy.takeDamage(special.damagePerTick * this.power * 10, dir, 100);
               }
             }
+          }
 
-            // Emit VFX event
-            this.scene.events.emit('playerSpecial', {
-              player: this,
-              special: special,
-              key: 'special3',
-            });
-
-            // Screen shake on landing
-            this.scene.cameras.main.shake(150, 0.006);
-
-            this.fsm.locked = false;
-            this.fsm.transition('idle');
+          // Loop the attack animation
+          if (!this.sprite.anims.isPlaying) {
+            this.sprite.play(`${this.classKey}_atk1`, true);
+            this.sprite.anims.msPerFrame = 50;
+          }
+        },
+        exit() {
+          if (this.whirlwindGfx) {
+            this.whirlwindGfx.destroy();
+            this.whirlwindGfx = null;
+          }
+          if (this.whirlwindParticles) {
+            this.whirlwindParticles.destroy();
+            this.whirlwindParticles = null;
           }
         },
         transitions: { idle: 'idle', death: 'death' },
@@ -518,7 +966,11 @@ export class Player extends Phaser.GameObjects.Container {
       return;
     }
 
-    // Apply knockback and hitstun
+    // Never interrupt abilities or attacks — take damage but don't stagger
+    const currentState = this.fsm.currentState;
+    if (currentState !== 'idle' && currentState !== 'walk') return;
+
+    // Apply knockback and hitstun only when idle/walking
     this.knockbackVelocity = knockbackDir || { x: 0, y: 0 };
     this.hitstunDuration = hitstunDuration || 200;
     this.fsm.forceState('hitstun');
@@ -555,6 +1007,8 @@ export class Player extends Phaser.GameObjects.Container {
     this.special1JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special1);
     this.special2JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special2);
     this.special3JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special3);
+    this.special4JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special4);
+    this.special5JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special5);
     this.tabJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.tab);
 
     // Gamepad button just-pressed detection
@@ -585,6 +1039,8 @@ export class Player extends Phaser.GameObjects.Container {
     if (this.cooldowns.special1 > 0) this.cooldowns.special1 -= dt;
     if (this.cooldowns.special2 > 0) this.cooldowns.special2 -= dt;
     if (this.cooldowns.special3 > 0) this.cooldowns.special3 -= dt;
+    if (this.cooldowns.special4 > 0) this.cooldowns.special4 -= dt;
+    if (this.cooldowns.special5 > 0) this.cooldowns.special5 -= dt;
 
     // Combo window decay
     if (this.comboTimer > 0) {

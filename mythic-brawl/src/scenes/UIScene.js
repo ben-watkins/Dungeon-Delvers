@@ -41,15 +41,15 @@ export class UIScene extends Phaser.Scene {
 
     this.dungeonLabel = this.add.text(6, 3, `M+${this.keystoneLevel}  ${this.dungeonName}`, {
       fontSize: '10px', fontFamily: 'monospace', color: '#b0b0c8',
-    }).setResolution(2).setDepth(1);
+    }).setResolution(4).setDepth(1);
 
     this.timerText = this.add.text(width - 6, 3, '00:00', {
       fontSize: '12px', fontFamily: 'monospace', color: '#80d8ff',
-    }).setOrigin(1, 0).setResolution(2).setDepth(1);
+    }).setOrigin(1, 0).setResolution(4).setDepth(1);
 
     this.deathText = this.add.text(width - 6, 15, '', {
       fontSize: '8px', fontFamily: 'monospace', color: '#cc4444',
-    }).setOrigin(1, 0).setResolution(2).setDepth(1);
+    }).setOrigin(1, 0).setResolution(4).setDepth(1);
 
     // --- AFFIX INDICATORS ---
     const affixNames = this.affixManager.getActiveAffixNames();
@@ -66,7 +66,7 @@ export class UIScene extends Phaser.Scene {
       this.add.rectangle(ax + 4, 14, 6, 6, color).setDepth(1);
       this.add.text(ax + 12, 11, name.substring(0, 4), {
         fontSize: '8px', fontFamily: 'monospace', color: '#9090a8',
-      }).setResolution(2).setDepth(1);
+      }).setResolution(4).setDepth(1);
     });
 
     // --- PARTY FRAMES (bottom-left) ---
@@ -81,12 +81,12 @@ export class UIScene extends Phaser.Scene {
         nameText: this.add.text(fx, fy, `${isPlayer ? '>' : ' '}${member.classData.name}`, {
           fontSize: '9px', fontFamily: 'monospace',
           color: isPlayer ? '#ffffff' : '#9090a8',
-        }).setResolution(2).setDepth(1),
+        }).setResolution(4).setDepth(1),
         hpBg: this.add.rectangle(fx + 56, fy + 5, 50, 6, 0x1a1a2e).setOrigin(0, 0.5).setDepth(1),
         hpFill: this.add.rectangle(fx + 56, fy + 5, 50, 6, 0x44cc44).setOrigin(0, 0.5).setDepth(1),
         hpText: this.add.text(fx + 110, fy, '', {
           fontSize: '8px', fontFamily: 'monospace', color: '#808098',
-        }).setResolution(2).setDepth(1),
+        }).setResolution(4).setDepth(1),
       };
       this.partyFrames.push(frame);
     });
@@ -97,7 +97,7 @@ export class UIScene extends Phaser.Scene {
     // --- CONTROLS HINT (first 10 seconds) ---
     this.controlsHint = this.add.text(width / 2, height - 4, 'WASD move · NUM1 attack · NUM2/3 specials · NUM7 leap · TAB target', {
       fontSize: '7px', fontFamily: 'monospace', color: '#404060',
-    }).setOrigin(0.5, 1).setResolution(2).setDepth(1);
+    }).setOrigin(0.5, 1).setResolution(4).setDepth(1);
 
     this.time.delayedCall(10000, () => {
       this.controlsHint?.destroy();
@@ -119,7 +119,7 @@ export class UIScene extends Phaser.Scene {
       .setDepth(0);
 
     this.abilitySlots = [];
-    const keyLabels = ['1', '2', '3', '7', '8', '9'];
+    const keyLabels = ['1', '2', '3', '7', '4', '5', '6', '8', '9'];
     const slotNames = ['Attack', ...keys.map(k => specials[k].name)];
     const slotKeys = ['attack', ...keys];
 
@@ -138,18 +138,18 @@ export class UIScene extends Phaser.Scene {
       // Cooldown timer text
       const cdText = this.add.text(sx + slotSize / 2, sy + slotSize / 2, '', {
         fontSize: '9px', fontFamily: 'monospace', color: '#ffffff',
-      }).setOrigin(0.5).setResolution(2).setDepth(3);
+      }).setOrigin(0.5).setResolution(4).setDepth(3);
 
       // Key label (bottom of slot)
       this.add.text(sx + slotSize / 2, sy + slotSize + 1, keyLabels[i] || '', {
-        fontSize: '6px', fontFamily: 'monospace', color: '#606080',
-      }).setOrigin(0.5, 0).setResolution(2).setDepth(1);
+        fontSize: '7px', fontFamily: 'monospace', color: '#8898b0',
+      }).setOrigin(0.5, 0).setResolution(4).setDepth(1);
 
       // Ability name abbreviation (inside slot)
       const abbr = slotNames[i].substring(0, 3);
       this.add.text(sx + slotSize / 2, sy + 3, abbr, {
-        fontSize: '6px', fontFamily: 'monospace', color: '#8090a8',
-      }).setOrigin(0.5, 0).setResolution(2).setDepth(1);
+        fontSize: '7px', fontFamily: 'monospace', color: '#a0b0c8',
+      }).setOrigin(0.5, 0).setResolution(4).setDepth(1);
 
       this.abilitySlots.push({
         key: slotKeys[i],

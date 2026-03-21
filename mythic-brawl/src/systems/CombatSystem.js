@@ -143,8 +143,12 @@ export class CombatSystem {
 
           const dir = this.knockbackDir(player, enemy, knockForce);
 
+          // Stun — enemy is stunned, takes double damage, yellow HP bar
+          if (special.stun === true && enemy.applyStun) {
+            enemy.takeDamage(special.damage * player.power * 10, dir, 0);
+            enemy.applyStun(special.stunDuration || 1500, dir);
           // Knockdown — enemy plays knockdown + getup anims
-          if (special.knockdown && enemy.applyKnockdown) {
+          } else if (special.knockdown && enemy.applyKnockdown) {
             enemy.takeDamage(special.damage * player.power * 10, dir, 0);
             enemy.applyKnockdown(special.knockdownDuration || 1500, dir);
           } else {
@@ -245,12 +249,12 @@ export class CombatSystem {
 
   spawnDamageNumber(x, y, text, color) {
     const dmgText = this.scene.add.text(x, y, text, {
-      fontSize: '8px',
+      fontSize: '10px',
       fontFamily: 'monospace',
       color: color,
       stroke: '#000000',
-      strokeThickness: 2,
-    }).setOrigin(0.5).setDepth(GAME_CONFIG.layers.ui);
+      strokeThickness: 3,
+    }).setOrigin(0.5).setResolution(4).setDepth(GAME_CONFIG.layers.ui);
 
     this.scene.tweens.add({
       targets: dmgText,

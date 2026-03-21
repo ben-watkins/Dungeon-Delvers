@@ -51,6 +51,7 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.knockbackVelocity = { x: 0, y: 0 };
     this.hitstunDuration = 0;
     this.hitstunTimer = 0;
+    this.stunned = false; // Stunned enemies take double damage
 
     // Bleed DOT state
     this.bleed = null;  // { damagePerTick, ticksRemaining, interval, timer }
@@ -246,6 +247,7 @@ export class Enemy extends Phaser.GameObjects.Container {
 
           this.knockdownTimer += dt;
           if (this.knockdownTimer >= this.knockdownDuration) {
+            this.fsm.locked = false;
             this.fsm.transition('getup');
           }
         },
@@ -254,13 +256,56 @@ export class Enemy extends Phaser.GameObjects.Container {
 
       getup: {
         enter() {
+          this.fsm.locked = true;
           this.sprite.play(`${this.enemyKey}_getup`, true);
+          this.getupDone = false;
+
           this.sprite.once('animationcomplete', () => {
+            this.getupDone = true;
             this.fsm.locked = false;
             this.fsm.transition('chase');
           });
+
+          // Safety fallback — if animationcomplete never fires, force recovery
+          this.getupFallback = 2000;
         },
-        update(dt) {},
+        update(dt) {
+          if (!this.getupDone) {
+            this.getupFallback -= dt;
+            if (this.getupFallback <= 0) {
+              this.fsm.locked = false;
+              this.fsm.transition('chase');
+            }
+          }
+        },
+        transitions: { chase: 'chase', death: 'death' },
+      },
+
+      stunned: {
+        enter() {
+          this.sprite.play(`${this.enemyKey}_hitstun`, true);
+          this.fsm.locked = true;
+          this.stunned = true;
+          this.stunTimer = 0;
+        },
+        update(dt) {
+          // Slide from knockback
+          this.x += this.knockbackVelocity.x;
+          this.groundY = clampToGround(this.groundY + this.knockbackVelocity.y);
+          this.y = this.groundY;
+          this.knockbackVelocity.x *= GAME_CONFIG.knockbackDecay;
+          this.knockbackVelocity.y *= GAME_CONFIG.knockbackDecay;
+
+          this.stunTimer += dt;
+          if (this.stunTimer >= this.stunDuration) {
+            this.stunned = false;
+            this.fsm.locked = false;
+            this.fsm.transition('chase');
+          }
+        },
+        exit() {
+          this.stunned = false;
+        },
         transitions: { chase: 'chase', death: 'death' },
       },
 
@@ -337,7 +382,9 @@ export class Enemy extends Phaser.GameObjects.Container {
   takeDamage(amount, knockbackDir, hitstunDuration) {
     if (this.fsm.is('death')) return;
 
-    const finalDamage = Math.max(1, Math.round(amount / this.defense));
+    // Stunned enemies take double damage
+    const stunnedMultiplier = this.stunned ? 2 : 1;
+    const finalDamage = Math.max(1, Math.round((amount * stunnedMultiplier) / this.defense));
     this.hp -= finalDamage;
 
     this.scene.events.emit('entityDamaged', {
@@ -358,10 +405,19 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.fsm.forceState('hitstun');
   }
 
+  applyStun(duration, knockbackDir) {
+    if (this.fsm.is('death')) return;
+    this.stunDuration = duration;
+    this.knockbackVelocity = knockbackDir || { x: 0, y: 0 };
+    this.fsm.locked = false;
+    this.fsm.forceState('stunned');
+  }
+
   applyKnockdown(duration, knockbackDir) {
     if (this.fsm.is('death')) return;
     this.knockdownDuration = duration;
     this.knockbackVelocity = knockbackDir || { x: 0, y: 0 };
+    this.fsm.locked = false;
     this.fsm.forceState('knockdown');
   }
 
@@ -406,6 +462,17 @@ export class Enemy extends Phaser.GameObjects.Container {
   updateHpBar() {
     const pct = this.hp / this.maxHp;
     this.hpBarFill.setScale(pct, 1);
+
+    // Yellow bar when stunned, otherwise restore type-based color
+    if (this.stunned) {
+      this.hpBarFill.setTint(0xeecc44);
+    } else if (this.enemyData.type === 'elite') {
+      this.hpBarFill.setTint(0xccaa44);
+    } else if (this.enemyData.type === 'boss') {
+      this.hpBarFill.setTint(0xcc4444);
+    } else {
+      this.hpBarFill.clearTint();
+    }
 
     // Show/hide bleed icon
     if (this.bleedIcon) {

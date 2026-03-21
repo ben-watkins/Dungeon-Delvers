@@ -67,18 +67,40 @@ export const CLASSES = {
         cooldown: 5000,
         damage: 1.5,
         knockback: 6.0,
-        knockdown: true,
-        knockdownDuration: 1500,
-        description: 'Knocks enemies back and down. They take 1.5s to get back up.',
+        stun: true,
+        stunDuration: 4000,
+        description: 'Stuns enemies for 1.5s. Stunned enemies take double damage.',
       },
       special3: {
         name: 'Heroic Leap',
         key: 'warrior_leap',
         cooldown: 5000,
         damage: 2.0,
-        stunDuration: 3000,
+        stun: true,
+        stunDuration: 4000,
         radius: 40,
-        description: 'Leap to target, stunning all nearby enemies for 3 seconds.',
+        description: 'Leap to target, stunning all nearby enemies for 4 seconds.',
+      },
+      special5: {
+        name: 'Whirlwind',
+        key: 'warrior_whirlwind',
+        cooldown: 1000,
+        damagePerTick: 2.5,
+        tickInterval: 200,
+        radius: 35,
+        knockback: 1.5,
+        description: 'Channel: spin and slash all nearby enemies. Hold to continue.',
+      },
+      special4: {
+        name: 'Shield Charge',
+        key: 'warrior_charge',
+        cooldown: 2000,
+        damage: 1.5,
+        speedMultiplier: 1.2,
+        knockdown: true,
+        knockdownDuration: 1500,
+        knockbackBySize: { small: 18, medium: 8, large: 0 },
+        description: 'Dash to target at 120% speed, shield bash on arrival. Launches small enemies.',
       },
     },
     passives: {
@@ -100,6 +122,13 @@ export const CLASSES = {
     role: 'healer',
     stats: { hp: 90, speed: 50, power: 0.1, defense: 0.8 },
     combo: ['priest_atk1', 'priest_atk2', 'priest_atk3'],
+    rangedAttack: {
+      damage: 4,
+      healPercent: 1.0,
+      beamColor: 0xffffaa,
+      beamCount: 3,
+      hitAllVisible: true,
+    },
     specials: {
       special1: {
         name: 'Holy Light',
@@ -115,6 +144,15 @@ export const CLASSES = {
         healAmount: 20,
         damage: 1.8,
         description: 'AoE burst: damages nearby enemies and heals all party members.',
+      },
+      special3: {
+        name: 'Divine Ascension',
+        key: 'priest_ascension',
+        cooldown: 10000,
+        healPerBlob: 25,
+        blobCount: 6,
+        duration: 3000,
+        description: 'Levitate and lob healing orbs to all allies over 3 seconds.',
       },
     },
     passives: {
@@ -181,24 +219,24 @@ export const CLASSES = {
  *   recovery     — Frames of recovery after active frames (can't act)
  */
 export const ATTACKS = {
-  // WARRIOR COMBO
+  // WARRIOR COMBO — 3-swing escalating chain
   warrior_atk1: {
-    frames: 6, activeStart: 2, activeEnd: 3,
-    hitbox: { offsetX: 28, offsetY: -8, width: 40, height: 16 },
-    damage: 10, knockback: 1.0, hitstun: 200,
-    canCancel: 4, recovery: 2,
+    frames: 6, activeStart: 2, activeEnd: 4,
+    hitbox: { offsetX: 30, offsetY: -12, width: 50, height: 24 },
+    damage: 12, knockback: 2.5, hitstun: 250,
+    canCancel: 3, recovery: 1,
   },
   warrior_atk2: {
     frames: 7, activeStart: 2, activeEnd: 4,
-    hitbox: { offsetX: 24, offsetY: -10, width: 48, height: 18 },
-    damage: 14, knockback: 1.5, hitstun: 250,
-    canCancel: 5, recovery: 2,
+    hitbox: { offsetX: 28, offsetY: -14, width: 58, height: 28 },
+    damage: 18, knockback: 4.0, hitstun: 350,
+    canCancel: 4, recovery: 1,
   },
   warrior_atk3: {
-    frames: 10, activeStart: 3, activeEnd: 5,
-    hitbox: { offsetX: 20, offsetY: -12, width: 56, height: 22 },
-    damage: 22, knockback: 3.0, hitstun: 400,
-    canCancel: -1, recovery: 4,  // Finisher — no cancel
+    frames: 10, activeStart: 3, activeEnd: 6,
+    hitbox: { offsetX: 24, offsetY: -16, width: 66, height: 32 },
+    damage: 30, knockback: 7.0, hitstun: 500,
+    canCancel: -1, recovery: 3,  // Finisher — no cancel, big payoff
   },
 
   // PRIEST COMBO (staff swings)
@@ -258,8 +296,8 @@ export const DUNGEONS = {
     timeLimit: 900,          // seconds
     keystoneBase: 2,         // base keystone level
     rooms: [
-      { type: 'hallway', enemies: ['imp', 'imp', 'imp'] },
-      { type: 'arena', enemies: ['imp', 'imp', 'imp', 'hellknight', 'hellknight'] },
+      { type: 'hallway', enemies: ['imp', 'imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight'] },
+      { type: 'arena', enemies: ['imp', 'imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight', 'pitlord', 'pitlord'] },
       { type: 'hallway', enemies: ['imp', 'hellknight'] },
       { type: 'boss', boss: 'pitlord' },
       { type: 'hallway', enemies: ['imp', 'imp', 'imp', 'hellknight'] },
@@ -288,7 +326,7 @@ export const ENEMIES = {
     name: 'Hellknight',
     type: 'elite',
     size: 'medium',
-    stats: { hp: 800, speed: 30, power: 0.08, defense: 1.3 },
+    stats: { hp: 200, speed: 30, power: 0.08, defense: 1.3 },
     attacks: ['hellknight_slash', 'hellknight_charge'],
     aggroRange: 100,
     attackRange: 22,
@@ -299,7 +337,7 @@ export const ENEMIES = {
     type: 'boss',
     size: 'large',
     frameSize: 64,
-    stats: { hp: 3000, speed: 20, power: 0.1, defense: 1.6 },
+    stats: { hp: 750, speed: 20, power: 0.1, defense: 1.6 },
     attacks: ['pitlord_cleave', 'pitlord_stomp'],
     phases: [
       { hpThreshold: 0.6, attack: 'pitlord_hellfire' },

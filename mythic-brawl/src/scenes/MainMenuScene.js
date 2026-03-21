@@ -28,20 +28,20 @@ export class MainMenuScene extends Phaser.Scene {
       fontSize: '32px',
       fontFamily: 'monospace',
       color: '#80d8ff',
-    }).setOrigin(0.5).setResolution(2);
+    }).setOrigin(0.5).setResolution(4);
 
     this.add.text(width / 2, height * 0.28, 'Streets of Rage meets Mythic+', {
       fontSize: '10px',
       fontFamily: 'monospace',
       color: '#606080',
-    }).setOrigin(0.5).setResolution(2);
+    }).setOrigin(0.5).setResolution(4);
 
     // "Choose your class" label
     this.add.text(width / 2, height * 0.38, 'Choose your class', {
       fontSize: '10px',
       fontFamily: 'monospace',
       color: '#808098',
-    }).setOrigin(0.5).setResolution(2);
+    }).setOrigin(0.5).setResolution(4);
 
     // Class selection
     this.classes = [
@@ -73,7 +73,7 @@ export class MainMenuScene extends Phaser.Scene {
         color: cls.color,
         align: 'center',
         lineSpacing: 2,
-      }).setOrigin(0.5).setResolution(2).setInteractive();
+      }).setOrigin(0.5).setResolution(4).setInteractive();
 
       label.on('pointerdown', () => {
         this.selectedIndex = i;
@@ -89,10 +89,10 @@ export class MainMenuScene extends Phaser.Scene {
     // Left/right arrows hint
     this.add.text(width * 0.25 - 36, height * 0.52, '<', {
       fontSize: '14px', fontFamily: 'monospace', color: '#404060',
-    }).setOrigin(0.5).setResolution(2);
+    }).setOrigin(0.5).setResolution(4);
     this.add.text(width * 0.75 + 36, height * 0.52, '>', {
       fontSize: '14px', fontFamily: 'monospace', color: '#404060',
-    }).setOrigin(0.5).setResolution(2);
+    }).setOrigin(0.5).setResolution(4);
 
     // Keystone level
     this.keystoneLevel = 2;
@@ -100,14 +100,14 @@ export class MainMenuScene extends Phaser.Scene {
       fontSize: '10px',
       fontFamily: 'monospace',
       color: '#d4b040',
-    }).setOrigin(0.5).setResolution(2);
+    }).setOrigin(0.5).setResolution(4);
 
     // Start prompt
     this.add.text(width / 2, height * 0.88, 'Press ENTER to start', {
       fontSize: '10px',
       fontFamily: 'monospace',
       color: '#707090',
-    }).setOrigin(0.5).setResolution(2);
+    }).setOrigin(0.5).setResolution(4);
 
     // Input — class selection
     this.input.keyboard.on('keydown-LEFT', () => {

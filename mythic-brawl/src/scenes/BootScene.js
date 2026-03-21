@@ -138,6 +138,22 @@ export class BootScene extends Phaser.Scene {
     c6ctx.arc(3, 3, 3, 0, Math.PI * 2);
     c6ctx.fill();
     c6.refresh();
+
+    // 3x3 blood droplet (round-ish red particle)
+    const bl3 = this.textures.createCanvas('vfx_blood', 3, 3);
+    const bl3ctx = bl3.getContext();
+    bl3ctx.fillStyle = '#cc2222';
+    bl3ctx.fillRect(0, 0, 3, 3);
+    bl3ctx.fillStyle = '#881111';
+    bl3ctx.fillRect(0, 0, 1, 1);
+    bl3.refresh();
+
+    // 2x2 blood speck (smaller droplets)
+    const bl2 = this.textures.createCanvas('vfx_blood_sm', 2, 2);
+    const bl2ctx = bl2.getContext();
+    bl2ctx.fillStyle = '#aa1111';
+    bl2ctx.fillRect(0, 0, 2, 2);
+    bl2.refresh();
   }
 
   /**

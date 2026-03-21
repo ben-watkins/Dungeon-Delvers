@@ -52,6 +52,9 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.hitstunDuration = 0;
     this.hitstunTimer = 0;
 
+    // Bleed DOT state
+    this.bleed = null;  // { damagePerTick, ticksRemaining, interval, timer }
+
     // M+ affix state
     this.affixBuffs = [];  // Applied bolstering stacks, etc.
 
@@ -74,6 +77,15 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.hpBarFill = scene.add.image(-15, -this.sprite.height - 4, 'hp_bar_fill');
     this.hpBarFill.setOrigin(0, 0.5);
     this.add(this.hpBarFill);
+
+    // Bleed icon (red droplet next to HP bar, hidden until bleed applied)
+    this.bleedIcon = scene.add.graphics();
+    this.bleedIcon.fillStyle(0xcc2222, 1);
+    this.bleedIcon.fillCircle(0, 0, 2);
+    this.bleedIcon.fillTriangle(0, -3, -1.5, 0, 1.5, 0);
+    this.bleedIcon.setPosition(18, -this.sprite.height - 4);
+    this.bleedIcon.setVisible(false);
+    this.add(this.bleedIcon);
 
     // Elite/boss indicator
     if (this.enemyData.type === 'elite') {
@@ -215,6 +227,40 @@ export class Enemy extends Phaser.GameObjects.Container {
             this.fsm.transition('chase');
           }
         },
+        transitions: { chase: 'chase', knockdown: 'knockdown', death: 'death' },
+      },
+
+      knockdown: {
+        enter() {
+          this.sprite.play(`${this.enemyKey}_knockdown`, true);
+          this.fsm.locked = true;
+          this.knockdownTimer = 0;
+        },
+        update(dt) {
+          // Slide during knockdown
+          this.x += this.knockbackVelocity.x;
+          this.groundY = clampToGround(this.groundY + this.knockbackVelocity.y);
+          this.y = this.groundY;
+          this.knockbackVelocity.x *= GAME_CONFIG.knockbackDecay;
+          this.knockbackVelocity.y *= GAME_CONFIG.knockbackDecay;
+
+          this.knockdownTimer += dt;
+          if (this.knockdownTimer >= this.knockdownDuration) {
+            this.fsm.transition('getup');
+          }
+        },
+        transitions: { getup: 'getup', death: 'death' },
+      },
+
+      getup: {
+        enter() {
+          this.sprite.play(`${this.enemyKey}_getup`, true);
+          this.sprite.once('animationcomplete', () => {
+            this.fsm.locked = false;
+            this.fsm.transition('chase');
+          });
+        },
+        update(dt) {},
         transitions: { chase: 'chase', death: 'death' },
       },
 
@@ -312,9 +358,59 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.fsm.forceState('hitstun');
   }
 
+  applyKnockdown(duration, knockbackDir) {
+    if (this.fsm.is('death')) return;
+    this.knockdownDuration = duration;
+    this.knockbackVelocity = knockbackDir || { x: 0, y: 0 };
+    this.fsm.forceState('knockdown');
+  }
+
+  applyBleed(bleedConfig) {
+    this.bleed = {
+      damagePerTick: bleedConfig.damagePerTick,
+      ticksRemaining: bleedConfig.ticks,
+      interval: bleedConfig.interval,
+      timer: 0,
+    };
+  }
+
+  updateBleed(dt) {
+    if (!this.bleed || this.fsm.is('death')) return;
+
+    this.bleed.timer += dt;
+    if (this.bleed.timer >= this.bleed.interval) {
+      this.bleed.timer -= this.bleed.interval;
+      this.bleed.ticksRemaining--;
+
+      this.hp -= this.bleed.damagePerTick;
+      this.scene.events.emit('entityDamaged', {
+        entity: this,
+        damage: this.bleed.damagePerTick,
+        x: this.x + Phaser.Math.Between(-4, 4),
+        y: this.y - 16,
+      });
+
+      if (this.hp <= 0) {
+        this.hp = 0;
+        this.fsm.forceState('death');
+        this.bleed = null;
+        return;
+      }
+
+      if (this.bleed.ticksRemaining <= 0) {
+        this.bleed = null;
+      }
+    }
+  }
+
   updateHpBar() {
     const pct = this.hp / this.maxHp;
     this.hpBarFill.setScale(pct, 1);
+
+    // Show/hide bleed icon
+    if (this.bleedIcon) {
+      this.bleedIcon.setVisible(this.bleed !== null);
+    }
   }
 
   applyAffixBuff(type, value) {
@@ -329,6 +425,7 @@ export class Enemy extends Phaser.GameObjects.Container {
 
   update(time, dt) {
     if (this.attackTimer > 0) this.attackTimer -= dt;
+    this.updateBleed(dt);
     this.fsm.update(dt);
     this.y = this.groundY - this.jumpZ;
     this.updateHpBar();

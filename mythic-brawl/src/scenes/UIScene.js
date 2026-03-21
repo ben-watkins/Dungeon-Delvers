@@ -91,23 +91,73 @@ export class UIScene extends Phaser.Scene {
       this.partyFrames.push(frame);
     });
 
-    // --- COOLDOWN INDICATORS (bottom-right) ---
-    this.cd1Text = this.add.text(width - 6, height - 24, '[2] Special 1', {
-      fontSize: '8px', fontFamily: 'monospace', color: '#505068',
-    }).setOrigin(1, 0).setResolution(2).setDepth(1);
-
-    this.cd2Text = this.add.text(width - 6, height - 12, '[3] Special 2', {
-      fontSize: '8px', fontFamily: 'monospace', color: '#505068',
-    }).setOrigin(1, 0).setResolution(2).setDepth(1);
+    // --- ABILITY BAR (bottom-center) ---
+    this.createAbilityBar(width, height);
 
     // --- CONTROLS HINT (first 10 seconds) ---
-    this.controlsHint = this.add.text(width / 2, height - 4, 'WASD move · NUM1 attack · NUM2/NUM3 specials', {
-      fontSize: '8px', fontFamily: 'monospace', color: '#404060',
+    this.controlsHint = this.add.text(width / 2, height - 4, 'WASD move · NUM1 attack · NUM2/3 specials · NUM7 leap · TAB target', {
+      fontSize: '7px', fontFamily: 'monospace', color: '#404060',
     }).setOrigin(0.5, 1).setResolution(2).setDepth(1);
 
     this.time.delayedCall(10000, () => {
       this.controlsHint?.destroy();
     });
+  }
+
+  createAbilityBar(width, height) {
+    const specials = this.player.classData.specials;
+    const slotSize = 22;
+    const slotGap = 3;
+    const keys = Object.keys(specials);  // ['special1', 'special2', 'special3', ...]
+    const slotCount = keys.length + 1;   // +1 for basic attack
+    const barWidth = slotCount * (slotSize + slotGap) - slotGap;
+    const barX = (width - barWidth) / 2;
+    const barY = height - slotSize - 6;
+
+    // Background bar
+    this.add.rectangle(width / 2, barY + slotSize / 2, barWidth + 8, slotSize + 6, 0x0d0d18, 0.85)
+      .setDepth(0);
+
+    this.abilitySlots = [];
+    const keyLabels = ['1', '2', '3', '7', '8', '9'];
+    const slotNames = ['Attack', ...keys.map(k => specials[k].name)];
+    const slotKeys = ['attack', ...keys];
+
+    for (let i = 0; i < slotCount; i++) {
+      const sx = barX + i * (slotSize + slotGap);
+      const sy = barY;
+
+      // Slot background
+      const bg = this.add.rectangle(sx + slotSize / 2, sy + slotSize / 2, slotSize, slotSize, 0x1a1a2e)
+        .setStrokeStyle(1, 0x404060).setDepth(1);
+
+      // Cooldown overlay (darkens slot when on cooldown)
+      const cdOverlay = this.add.rectangle(sx + slotSize / 2, sy + slotSize / 2, slotSize, slotSize, 0x000000, 0.6)
+        .setDepth(2).setVisible(false);
+
+      // Cooldown timer text
+      const cdText = this.add.text(sx + slotSize / 2, sy + slotSize / 2, '', {
+        fontSize: '9px', fontFamily: 'monospace', color: '#ffffff',
+      }).setOrigin(0.5).setResolution(2).setDepth(3);
+
+      // Key label (bottom of slot)
+      this.add.text(sx + slotSize / 2, sy + slotSize + 1, keyLabels[i] || '', {
+        fontSize: '6px', fontFamily: 'monospace', color: '#606080',
+      }).setOrigin(0.5, 0).setResolution(2).setDepth(1);
+
+      // Ability name abbreviation (inside slot)
+      const abbr = slotNames[i].substring(0, 3);
+      this.add.text(sx + slotSize / 2, sy + 3, abbr, {
+        fontSize: '6px', fontFamily: 'monospace', color: '#8090a8',
+      }).setOrigin(0.5, 0).setResolution(2).setDepth(1);
+
+      this.abilitySlots.push({
+        key: slotKeys[i],
+        bg,
+        cdOverlay,
+        cdText,
+      });
+    }
   }
 
   update(time, delta) {
@@ -137,16 +187,29 @@ export class UIScene extends Phaser.Scene {
       frame.hpText.setText(`${Math.max(0, m.hp)}/${m.maxHp}`);
     }
 
-    // Cooldowns
-    if (this.player) {
-      const cd1 = Math.max(0, Math.ceil(this.player.cooldowns.special1 / 1000));
-      const cd2 = Math.max(0, Math.ceil(this.player.cooldowns.special2 / 1000));
+    // Ability bar cooldowns
+    if (this.player && this.abilitySlots) {
+      for (const slot of this.abilitySlots) {
+        if (slot.key === 'attack') {
+          // Attack has no cooldown
+          slot.cdOverlay.setVisible(false);
+          slot.cdText.setText('');
+          slot.bg.setStrokeStyle(1, 0x44cc44);
+          continue;
+        }
 
-      this.cd1Text.setText(cd1 > 0 ? `[2] ${this.player.classData.specials.special1.name} (${cd1}s)` : `[2] ${this.player.classData.specials.special1.name}`);
-      this.cd1Text.setColor(cd1 > 0 ? '#cc4444' : '#44cc44');
-
-      this.cd2Text.setText(cd2 > 0 ? `[3] ${this.player.classData.specials.special2.name} (${cd2}s)` : `[3] ${this.player.classData.specials.special2.name}`);
-      this.cd2Text.setColor(cd2 > 0 ? '#cc4444' : '#44cc44');
+        const cd = this.player.cooldowns[slot.key] || 0;
+        if (cd > 0) {
+          const secs = Math.ceil(cd / 1000);
+          slot.cdOverlay.setVisible(true);
+          slot.cdText.setText(`${secs}`);
+          slot.bg.setStrokeStyle(1, 0x404060);
+        } else {
+          slot.cdOverlay.setVisible(false);
+          slot.cdText.setText('');
+          slot.bg.setStrokeStyle(1, 0x44cc44);
+        }
+      }
     }
   }
 }

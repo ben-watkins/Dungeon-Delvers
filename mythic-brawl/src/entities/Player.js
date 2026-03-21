@@ -43,7 +43,7 @@ export class Player extends Phaser.GameObjects.Container {
     this.comboTimer = 0;
     this.comboWindow = 500;  // ms to input next combo hit
     this.inputBuffer = null;  // Buffered action to execute when current state allows
-    this.cooldowns = { special1: 0, special2: 0 };
+    this.cooldowns = { special1: 0, special2: 0, special3: 0 };
     this.hitStopTimer = 0;
     this.knockbackVelocity = { x: 0, y: 0 };
     this.invulnerable = false;
@@ -98,11 +98,18 @@ export class Player extends Phaser.GameObjects.Container {
     this.keys.block = kb.addKey(INPUT_MAP.block);
     this.keys.dodge = kb.addKey(INPUT_MAP.dodge);
     this.keys.sprint = kb.addKey('SHIFT');
+    this.keys.tab = kb.addKey('TAB');
+    this.keys.special3 = kb.addKey('NUMPAD_SEVEN');
+
+    // Tab target reference (set by DungeonScene)
+    this.tabTarget = null;
 
     // Track just-pressed for buffering
     this.attackJustPressed = false;
     this.special1JustPressed = false;
     this.special2JustPressed = false;
+    this.special3JustPressed = false;
+    this.tabJustPressed = false;
 
     // Gamepad — tracks previous frame button state for just-pressed detection
     this.pad = null;
@@ -131,8 +138,11 @@ export class Player extends Phaser.GameObjects.Container {
           if (this.special2JustPressed && this.cooldowns.special2 <= 0) {
             this.fsm.transition('special2');
           }
+          if (this.special3JustPressed && this.cooldowns.special3 <= 0 && this.classData.specials.special3) {
+            this.fsm.transition('special3');
+          }
         },
-        transitions: { walk: 'walk', attack: 'attack', special1: 'special1', special2: 'special2', hitstun: 'hitstun', death: 'death' },
+        transitions: { walk: 'walk', attack: 'attack', special1: 'special1', special2: 'special2', special3: 'special3', hitstun: 'hitstun', death: 'death' },
       },
 
       walk: {
@@ -153,8 +163,11 @@ export class Player extends Phaser.GameObjects.Container {
           if (this.special2JustPressed && this.cooldowns.special2 <= 0) {
             this.fsm.transition('special2');
           }
+          if (this.special3JustPressed && this.cooldowns.special3 <= 0 && this.classData.specials.special3) {
+            this.fsm.transition('special3');
+          }
         },
-        transitions: { idle: 'idle', attack: 'attack', special1: 'special1', special2: 'special2', hitstun: 'hitstun', death: 'death' },
+        transitions: { idle: 'idle', attack: 'attack', special1: 'special1', special2: 'special2', special3: 'special3', hitstun: 'hitstun', death: 'death' },
       },
 
       attack: {
@@ -167,6 +180,12 @@ export class Player extends Phaser.GameObjects.Container {
           this.currentAttack = attackData;
           this.attackFrame = 0;
           this.attackHit = false;  // Track if this attack has hit anything
+
+          // Auto-face tab target
+          if (this.tabTarget && this.tabTarget.hp > 0) {
+            this.facingRight = this.tabTarget.x > this.x;
+            this.sprite.setFlipX(!this.facingRight);
+          }
 
           // Signal AI companions that combat has begun
           this.scene.events.emit('playerAttack');
@@ -216,15 +235,27 @@ export class Player extends Phaser.GameObjects.Container {
 
       special1: {
         enter() {
+          // Auto-face tab target
+          if (this.tabTarget && this.tabTarget.hp > 0) {
+            this.facingRight = this.tabTarget.x > this.x;
+            this.sprite.setFlipX(!this.facingRight);
+          }
+
           this.sprite.play(`${this.classKey}_special1`, true);
           this.cooldowns.special1 = this.classData.specials.special1.cooldown;
           this.fsm.locked = true;
 
-          // Emit event for combat system to handle special effects
-          this.scene.events.emit('playerSpecial', {
-            player: this,
-            special: this.classData.specials.special1,
-            key: 'special1',
+          // Signal combat started
+          this.scene.events.emit('playerAttack');
+
+          // Delay damage + VFX to mid-swing (200ms into animation)
+          this.scene.time.delayedCall(200, () => {
+            if (!this.fsm.is('special1')) return;
+            this.scene.events.emit('playerSpecial', {
+              player: this,
+              special: this.classData.specials.special1,
+              key: 'special1',
+            });
           });
 
           this.sprite.once('animationcomplete', () => {
@@ -238,6 +269,12 @@ export class Player extends Phaser.GameObjects.Container {
 
       special2: {
         enter() {
+          // Auto-face tab target
+          if (this.tabTarget && this.tabTarget.hp > 0) {
+            this.facingRight = this.tabTarget.x > this.x;
+            this.sprite.setFlipX(!this.facingRight);
+          }
+
           this.sprite.play(`${this.classKey}_special2`, true);
           this.cooldowns.special2 = this.classData.specials.special2.cooldown;
           this.fsm.locked = true;
@@ -255,6 +292,89 @@ export class Player extends Phaser.GameObjects.Container {
         },
         update(dt) {},
         transitions: { idle: 'idle', hitstun: 'hitstun', death: 'death' },
+      },
+
+      special3: {
+        enter() {
+          const special = this.classData.specials.special3;
+          this.cooldowns.special3 = special.cooldown;
+          this.fsm.locked = true;
+
+          // Determine leap target position
+          let targetX = this.x + (this.facingRight ? 60 : -60);
+          let targetY = this.groundY;
+          if (this.tabTarget && this.tabTarget.hp > 0) {
+            targetX = this.tabTarget.x;
+            targetY = this.tabTarget.groundY;
+            this.facingRight = targetX > this.x;
+            this.sprite.setFlipX(!this.facingRight);
+          }
+
+          // Leap animation — use special1 anim as visual stand-in
+          this.sprite.play(`${this.classKey}_special1`, true);
+
+          // Store leap data
+          this.leapStartX = this.x;
+          this.leapStartY = this.groundY;
+          this.leapTargetX = targetX;
+          this.leapTargetY = targetY;
+          this.leapTimer = 0;
+          this.leapDuration = 400; // ms
+          this.leapSpecial = special;
+
+          // Signal combat started
+          this.scene.events.emit('playerAttack');
+        },
+        update(dt) {
+          this.leapTimer += dt;
+          const t = Math.min(this.leapTimer / this.leapDuration, 1);
+
+          // Horizontal/depth interpolation
+          this.x = Phaser.Math.Linear(this.leapStartX, this.leapTargetX, t);
+          this.groundY = clampToGround(
+            Phaser.Math.Linear(this.leapStartY, this.leapTargetY, t)
+          );
+
+          // Parabolic arc for jump height
+          this.jumpZ = Math.sin(t * Math.PI) * 40;
+          this.y = this.groundY - this.jumpZ;
+
+          // Landing
+          if (t >= 1) {
+            this.jumpZ = 0;
+            this.y = this.groundY;
+
+            // AoE stun + damage on landing
+            const enemies = this.scene.getAliveEnemies();
+            const special = this.leapSpecial;
+            for (const enemy of enemies) {
+              const dist = Phaser.Math.Distance.Between(
+                this.x, this.groundY, enemy.x, enemy.groundY
+              );
+              if (dist <= special.radius) {
+                enemy.takeDamage(
+                  special.damage * this.power * 10,
+                  { x: 0, y: 0 },
+                  special.stunDuration
+                );
+              }
+            }
+
+            // Emit VFX event
+            this.scene.events.emit('playerSpecial', {
+              player: this,
+              special: special,
+              key: 'special3',
+            });
+
+            // Screen shake on landing
+            this.scene.cameras.main.shake(150, 0.006);
+
+            this.fsm.locked = false;
+            this.fsm.transition('idle');
+          }
+        },
+        transitions: { idle: 'idle', death: 'death' },
       },
 
       hitstun: {
@@ -434,6 +554,8 @@ export class Player extends Phaser.GameObjects.Container {
     this.attackJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.attack);
     this.special1JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special1);
     this.special2JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special2);
+    this.special3JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special3);
+    this.tabJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.tab);
 
     // Gamepad button just-pressed detection
     // Xbox: A=0 (attack), X=2 (special1), Y=3 (special2), B=1 (block), RB=5 (dodge)
@@ -441,19 +563,28 @@ export class Player extends Phaser.GameObjects.Container {
       const btnA = this.pad.buttons[0] && this.pad.buttons[0].pressed;
       const btnX = this.pad.buttons[2] && this.pad.buttons[2].pressed;
       const btnY = this.pad.buttons[3] && this.pad.buttons[3].pressed;
+      const btnRB = this.pad.buttons[5] && this.pad.buttons[5].pressed;
 
       if (btnA && !this.padPrev.a) this.attackJustPressed = true;
       if (btnX && !this.padPrev.x) this.special1JustPressed = true;
       if (btnY && !this.padPrev.y) this.special2JustPressed = true;
+      if (btnRB && !this.padPrev.rb) this.tabJustPressed = true;
 
       this.padPrev.a = btnA;
       this.padPrev.x = btnX;
       this.padPrev.y = btnY;
+      this.padPrev.rb = btnRB;
+    }
+
+    // Tab targeting — cycle enemies
+    if (this.tabJustPressed && this.scene.cycleTabTarget) {
+      this.scene.cycleTabTarget();
     }
 
     // Update cooldowns
     if (this.cooldowns.special1 > 0) this.cooldowns.special1 -= dt;
     if (this.cooldowns.special2 > 0) this.cooldowns.special2 -= dt;
+    if (this.cooldowns.special3 > 0) this.cooldowns.special3 -= dt;
 
     // Combo window decay
     if (this.comboTimer > 0) {

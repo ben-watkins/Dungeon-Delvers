@@ -76,6 +76,7 @@ export class BootScene extends Phaser.Scene {
   create() {
     // Generate UI helper textures
     this.generateUITextures();
+    this.generateVFXTextures();
 
     // Define animations
     this.createAnimations();
@@ -109,6 +110,34 @@ export class BootScene extends Phaser.Scene {
     hfctx.fillStyle = '#44cc44';
     hfctx.fillRect(0, 0, 30, 2);
     hpFill.refresh();
+  }
+
+  /**
+   * Generate tiny canvas textures used by the VFX particle system.
+   */
+  generateVFXTextures() {
+    // 2x2 white pixel (tintable by particle emitters)
+    const px2 = this.textures.createCanvas('vfx_pixel', 2, 2);
+    const px2ctx = px2.getContext();
+    px2ctx.fillStyle = '#ffffff';
+    px2ctx.fillRect(0, 0, 2, 2);
+    px2.refresh();
+
+    // 4x4 white square (larger particles)
+    const px4 = this.textures.createCanvas('vfx_pixel_4', 4, 4);
+    const px4ctx = px4.getContext();
+    px4ctx.fillStyle = '#ffffff';
+    px4ctx.fillRect(0, 0, 4, 4);
+    px4.refresh();
+
+    // 6x6 circle (heal/glow particles)
+    const c6 = this.textures.createCanvas('vfx_circle', 6, 6);
+    const c6ctx = c6.getContext();
+    c6ctx.fillStyle = '#ffffff';
+    c6ctx.beginPath();
+    c6ctx.arc(3, 3, 3, 0, Math.PI * 2);
+    c6ctx.fill();
+    c6.refresh();
   }
 
   /**

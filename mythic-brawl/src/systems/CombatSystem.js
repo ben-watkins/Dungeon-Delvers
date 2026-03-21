@@ -128,10 +128,33 @@ export class CombatSystem {
     if (special.damage) {
       for (const enemy of enemies) {
         const dist = Phaser.Math.Distance.Between(player.x, player.groundY, enemy.x, enemy.groundY);
-        const range = special.teleport ? 100 : 40;
+        const range = special.range || (special.teleport ? 100 : 40);
         if (dist <= range) {
-          const dir = this.knockbackDir(player, enemy, special.knockback || 2);
-          enemy.takeDamage(special.damage * player.power * 10, dir, special.stun || 300);
+          let knockForce = special.knockback || 0;
+          let stunTime = special.stun || 300;
+          const enemySize = enemy.enemyData?.size || 'medium';
+
+          if (special.knockbackBySize) {
+            knockForce = special.knockbackBySize[enemySize] ?? knockForce;
+          }
+          if (special.hitstunBySize) {
+            stunTime = special.hitstunBySize[enemySize] ?? stunTime;
+          }
+
+          const dir = this.knockbackDir(player, enemy, knockForce);
+
+          // Knockdown — enemy plays knockdown + getup anims
+          if (special.knockdown && enemy.applyKnockdown) {
+            enemy.takeDamage(special.damage * player.power * 10, dir, 0);
+            enemy.applyKnockdown(special.knockdownDuration || 1500, dir);
+          } else {
+            enemy.takeDamage(special.damage * player.power * 10, dir, stunTime);
+          }
+
+          // Apply bleed DOT
+          if (special.bleed && enemy.applyBleed) {
+            enemy.applyBleed(special.bleed);
+          }
         }
       }
     }

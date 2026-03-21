@@ -22,6 +22,7 @@ import { Player } from '../entities/Player.js';
 import { Enemy } from '../entities/Enemy.js';
 import { AICompanion } from '../entities/AICompanion.js';
 import { CombatSystem } from '../systems/CombatSystem.js';
+import { VFXSystem } from '../systems/VFXSystem.js';
 import { AffixManager } from '../systems/AffixManager.js';
 import { DungeonTimer } from '../systems/DungeonTimer.js';
 import { sortGroup } from '../utils/DepthSort.js';
@@ -55,6 +56,7 @@ export class DungeonScene extends Phaser.Scene {
 
     // Systems
     this.combatSystem = new CombatSystem(this);
+    this.vfxSystem = new VFXSystem(this);
     this.affixManager = new AffixManager(this, this.keystoneLevel);
     this.dungeonTimer = new DungeonTimer(this, dungeon.timeLimit);
 
@@ -72,6 +74,26 @@ export class DungeonScene extends Phaser.Scene {
       this.partyMembers.push(companion);
       this.allEntities.add(companion);
     });
+
+    // Physics collision groups — prevent walk-through
+    this.partyGroup = this.physics.add.group();
+    this.enemyGroup = this.physics.add.group();
+
+    // Add existing party members to physics group
+    for (const member of this.partyMembers) {
+      this.partyGroup.add(member);
+    }
+
+    // Colliders: party vs enemies, enemies vs enemies
+    this.physics.add.collider(this.partyGroup, this.enemyGroup);
+    this.physics.add.collider(this.enemyGroup, this.enemyGroup);
+    this.physics.add.collider(this.partyGroup, this.partyGroup);
+
+    // Tab targeting
+    this.tabTargetIndex = -1;
+    this.tabTarget = null;
+    this.tabTargetIndicator = this.add.graphics();
+    this.tabTargetIndicator.setDepth(GAME_CONFIG.layers.foregroundDecor);
 
     // Room system
     this.currentRoomIndex = 0;
@@ -184,6 +206,7 @@ export class DungeonScene extends Phaser.Scene {
         this.affixManager.applySpawnModifiers(enemy);
         this.enemies.push(enemy);
         this.allEntities.add(enemy);
+        this.enemyGroup.add(enemy);
       });
     }
 
@@ -194,6 +217,7 @@ export class DungeonScene extends Phaser.Scene {
       this.affixManager.applySpawnModifiers(boss);
       this.enemies.push(boss);
       this.allEntities.add(boss);
+      this.enemyGroup.add(boss);
     }
 
     // Lock camera if arena room
@@ -273,10 +297,74 @@ export class DungeonScene extends Phaser.Scene {
     // Depth sort all entities
     sortGroup(this.allEntities);
 
+    // Tab targeting — cycle and render indicator
+    this.updateTabTarget();
+
     // Parallax background — scroll at half camera speed
     this.bgLayer.tilePositionX = this.cameras.main.scrollX * 0.5;
 
     // Camera bounds (prevent scrolling past world edge)
     this.player.x = Phaser.Math.Clamp(this.player.x, 16, this.worldWidth - 16);
+  }
+
+  /**
+   * Tab targeting: cycle through alive enemies, draw indicator on current target.
+   */
+  updateTabTarget() {
+    const alive = this.getAliveEnemies();
+
+    // Clear indicator if no enemies or target died
+    if (alive.length === 0) {
+      this.tabTarget = null;
+      this.tabTargetIndex = -1;
+      this.tabTargetIndicator.clear();
+      return;
+    }
+
+    // Validate current target is still alive
+    if (this.tabTarget && (this.tabTarget.hp <= 0 || !alive.includes(this.tabTarget))) {
+      this.tabTarget = null;
+      this.tabTargetIndex = -1;
+    }
+
+    // Draw target indicator
+    this.tabTargetIndicator.clear();
+    if (this.tabTarget) {
+      const t = this.tabTarget;
+      const tx = t.x;
+      const ty = t.groundY;
+
+      // Arrow above enemy
+      this.tabTargetIndicator.fillStyle(0xff4444, 0.8);
+      this.tabTargetIndicator.fillTriangle(
+        tx, ty - 32,
+        tx - 4, ty - 38,
+        tx + 4, ty - 38
+      );
+
+      // Circle at feet
+      this.tabTargetIndicator.lineStyle(1, 0xff4444, 0.5);
+      this.tabTargetIndicator.strokeEllipse(tx, ty, 20, 8);
+
+      // Expose to player for auto-facing
+      this.player.tabTarget = this.tabTarget;
+    } else {
+      this.player.tabTarget = null;
+    }
+  }
+
+  /**
+   * Cycle to next enemy target. Called by Player on Tab press.
+   */
+  cycleTabTarget() {
+    const alive = this.getAliveEnemies();
+    if (alive.length === 0) {
+      this.tabTarget = null;
+      this.tabTargetIndex = -1;
+      return;
+    }
+
+    this.tabTargetIndex = (this.tabTargetIndex + 1) % alive.length;
+    this.tabTarget = alive[this.tabTargetIndex];
   }
 }

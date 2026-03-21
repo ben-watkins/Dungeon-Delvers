@@ -53,20 +53,32 @@ export const CLASSES = {
     combo: ['warrior_atk1', 'warrior_atk2', 'warrior_atk3'],
     specials: {
       special1: {
-        name: 'Overhead Cleave',
-        key: 'warrior_cleave',
+        name: 'Mega Slash',
+        key: 'warrior_megaslash',
         cooldown: 3000,
         damage: 2.5,
-        description: 'Massive overhead swing. Hits all enemies in front.',
+        range: 50,
+        bleed: { damagePerTick: 2, ticks: 5, interval: 1000 },
+        description: 'Huge horizontal slash. Applies bleed to all enemies hit.',
       },
       special2: {
         name: 'Shield Bash',
         key: 'warrior_shieldbash',
         cooldown: 5000,
         damage: 1.5,
-        knockback: 3.0,
-        stun: 1500,
-        description: 'Stuns target and knocks back nearby enemies.',
+        knockback: 6.0,
+        knockdown: true,
+        knockdownDuration: 1500,
+        description: 'Knocks enemies back and down. They take 1.5s to get back up.',
+      },
+      special3: {
+        name: 'Heroic Leap',
+        key: 'warrior_leap',
+        cooldown: 5000,
+        damage: 2.0,
+        stunDuration: 3000,
+        radius: 40,
+        description: 'Leap to target, stunning all nearby enemies for 3 seconds.',
       },
     },
     passives: {
@@ -172,19 +184,19 @@ export const ATTACKS = {
   // WARRIOR COMBO
   warrior_atk1: {
     frames: 6, activeStart: 2, activeEnd: 3,
-    hitbox: { offsetX: 14, offsetY: -8, width: 20, height: 16 },
+    hitbox: { offsetX: 28, offsetY: -8, width: 40, height: 16 },
     damage: 10, knockback: 1.0, hitstun: 200,
     canCancel: 4, recovery: 2,
   },
   warrior_atk2: {
     frames: 7, activeStart: 2, activeEnd: 4,
-    hitbox: { offsetX: 12, offsetY: -10, width: 24, height: 18 },
+    hitbox: { offsetX: 24, offsetY: -10, width: 48, height: 18 },
     damage: 14, knockback: 1.5, hitstun: 250,
     canCancel: 5, recovery: 2,
   },
   warrior_atk3: {
     frames: 10, activeStart: 3, activeEnd: 5,
-    hitbox: { offsetX: 10, offsetY: -12, width: 28, height: 22 },
+    hitbox: { offsetX: 20, offsetY: -12, width: 56, height: 22 },
     damage: 22, knockback: 3.0, hitstun: 400,
     canCancel: -1, recovery: 4,  // Finisher — no cancel
   },
@@ -192,19 +204,19 @@ export const ATTACKS = {
   // PRIEST COMBO (staff swings)
   priest_atk1: {
     frames: 6, activeStart: 2, activeEnd: 3,
-    hitbox: { offsetX: 12, offsetY: -6, width: 18, height: 14 },
+    hitbox: { offsetX: 24, offsetY: -6, width: 36, height: 14 },
     damage: 6, knockback: 0.5, hitstun: 150,
     canCancel: 4, recovery: 2,
   },
   priest_atk2: {
     frames: 7, activeStart: 2, activeEnd: 4,
-    hitbox: { offsetX: 10, offsetY: -8, width: 22, height: 16 },
+    hitbox: { offsetX: 20, offsetY: -8, width: 44, height: 16 },
     damage: 8, knockback: 0.8, hitstun: 200,
     canCancel: 5, recovery: 2,
   },
   priest_atk3: {
     frames: 9, activeStart: 3, activeEnd: 5,
-    hitbox: { offsetX: 8, offsetY: -10, width: 26, height: 20 },
+    hitbox: { offsetX: 16, offsetY: -10, width: 52, height: 20 },
     damage: 12, knockback: 1.5, hitstun: 300,
     canCancel: -1, recovery: 3,
   },
@@ -212,25 +224,25 @@ export const ATTACKS = {
   // ROGUE COMBO (fast dagger chain)
   rogue_atk1: {
     frames: 4, activeStart: 1, activeEnd: 2,
-    hitbox: { offsetX: 12, offsetY: -6, width: 14, height: 12 },
+    hitbox: { offsetX: 24, offsetY: -6, width: 28, height: 12 },
     damage: 8, knockback: 0.3, hitstun: 100,
     canCancel: 3, recovery: 1,
   },
   rogue_atk2: {
     frames: 4, activeStart: 1, activeEnd: 2,
-    hitbox: { offsetX: 14, offsetY: -6, width: 14, height: 12 },
+    hitbox: { offsetX: 28, offsetY: -6, width: 28, height: 12 },
     damage: 8, knockback: 0.3, hitstun: 100,
     canCancel: 3, recovery: 1,
   },
   rogue_atk3: {
     frames: 5, activeStart: 1, activeEnd: 3,
-    hitbox: { offsetX: 12, offsetY: -8, width: 18, height: 14 },
+    hitbox: { offsetX: 24, offsetY: -8, width: 36, height: 14 },
     damage: 12, knockback: 0.8, hitstun: 150,
     canCancel: 4, recovery: 1,
   },
   rogue_atk4: {
     frames: 8, activeStart: 2, activeEnd: 4,
-    hitbox: { offsetX: 10, offsetY: -10, width: 24, height: 18 },
+    hitbox: { offsetX: 20, offsetY: -10, width: 48, height: 18 },
     damage: 18, knockback: 2.5, hitstun: 350,
     canCancel: -1, recovery: 3,
   },
@@ -265,6 +277,7 @@ export const ENEMIES = {
   imp: {
     name: 'Imp',
     type: 'trash',
+    size: 'small',
     stats: { hp: 300, speed: 50, power: 0.05, defense: 0.4 },
     attacks: ['imp_scratch'],
     aggroRange: 80,
@@ -274,6 +287,7 @@ export const ENEMIES = {
   hellknight: {
     name: 'Hellknight',
     type: 'elite',
+    size: 'medium',
     stats: { hp: 800, speed: 30, power: 0.08, defense: 1.3 },
     attacks: ['hellknight_slash', 'hellknight_charge'],
     aggroRange: 100,
@@ -283,6 +297,7 @@ export const ENEMIES = {
   pitlord: {
     name: 'Pitlord',
     type: 'boss',
+    size: 'large',
     frameSize: 64,
     stats: { hp: 3000, speed: 20, power: 0.1, defense: 1.6 },
     attacks: ['pitlord_cleave', 'pitlord_stomp'],

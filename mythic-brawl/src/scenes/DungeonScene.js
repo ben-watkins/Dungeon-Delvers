@@ -50,6 +50,7 @@ export class DungeonScene extends Phaser.Scene {
 
     // AI companions wait until the player attacks before engaging
     this.combatStarted = false;
+    this.dungeonComplete = false;
     this.events.on('playerAttack', () => { this.combatStarted = true; });
 
     // Background (placeholder — solid color with ground line)
@@ -89,7 +90,6 @@ export class DungeonScene extends Phaser.Scene {
     // Colliders: party vs enemies, enemies vs enemies
     this.physics.add.collider(this.partyGroup, this.enemyGroup);
     this.physics.add.collider(this.enemyGroup, this.enemyGroup);
-    this.physics.add.collider(this.partyGroup, this.partyGroup);
 
     // Tab targeting
     this.tabTargetIndex = -1;
@@ -487,6 +487,8 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   completeDungeon() {
+    if (this.dungeonComplete) return; // Prevent double-fire
+    this.dungeonComplete = true;
     this.dungeonTimer.complete();
     const upgrade = this.dungeonTimer.getKeyUpgrade();
     this.goIndicator.setVisible(false);
@@ -545,6 +547,8 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   update(time, delta) {
+    if (this.dungeonComplete) return;
+
     // Update all entities
     this.player.update(time, delta);
     for (const member of this.partyMembers) {
@@ -575,13 +579,8 @@ export class DungeonScene extends Phaser.Scene {
       layer.sprite.tilePositionX = scrollX * layer.scrollFactor;
     }
 
-    // Room boundaries — clamp player and AI companions to current room
+    // Room boundaries — only clamp the player character, AI follows freely
     this.player.x = Phaser.Math.Clamp(this.player.x, this.roomLeftBound + 16, this.roomRightBound - 16);
-    for (const member of this.partyMembers) {
-      if (member !== this.player && member.hp > 0) {
-        member.x = Phaser.Math.Clamp(member.x, this.roomLeftBound - 20, this.roomRightBound + 20);
-      }
-    }
 
     // Check if player walked into next room
     this.checkRoomTransition();

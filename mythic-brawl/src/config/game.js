@@ -49,7 +49,7 @@ export const CLASSES = {
   warrior: {
     name: 'Warrior',
     role: 'tank',
-    stats: { hp: 150, speed: 115, power: 2.0, defense: 1.4 },
+    stats: { hp: 150, speed: 86, power: 2.0, defense: 1.4 },
     combo: ['warrior_atk1', 'warrior_atk2', 'warrior_atk3'],
     specials: {
       special1: {
@@ -120,7 +120,7 @@ export const CLASSES = {
   priest: {
     name: 'Priest',
     role: 'healer',
-    stats: { hp: 90, speed: 115, power: 3.0, defense: 0.8 },
+    stats: { hp: 90, speed: 86, power: 3.0, defense: 0.8 },
     combo: ['priest_atk1', 'priest_atk2', 'priest_atk3'],
     rangedAttack: {
       damage: 4,
@@ -167,7 +167,7 @@ export const CLASSES = {
   rogue: {
     name: 'Rogue',
     role: 'dps',
-    stats: { hp: 100, speed: 115, power: 8.0, defense: 0.9 },
+    stats: { hp: 100, speed: 86, power: 8.0, defense: 0.9 },
     combo: ['rogue_atk1', 'rogue_atk2', 'rogue_atk3', 'rogue_atk4'],
     specials: {
       special1: {

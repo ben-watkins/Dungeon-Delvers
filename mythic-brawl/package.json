@@ -10,8 +10,8 @@
     "start:server": "node server/index.js"
   },
   "dependencies": {
-    "@colyseus/ws-transport": "^0.17.9",
-    "colyseus": "^0.17.8",
+    "@colyseus/ws-transport": "^0.16.5",
+    "colyseus": "^0.16.5",
     "colyseus.js": "^0.16.22",
     "phaser": "^3.80.1"
   },

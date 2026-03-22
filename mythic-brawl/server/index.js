@@ -17,7 +17,7 @@ const server = new Server({
   }),
 });
 
-server.define('dungeon', DungeonRoom);
+server.define('dungeon', DungeonRoom).filterBy(['roomCode']);
 
 server.listen(port).then(() => {
   console.log(`Mythic Brawl server running on ws://localhost:${port}`);

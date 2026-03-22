@@ -7,6 +7,17 @@
 
 import { Client } from 'colyseus.js';
 
+function getServerUrl() {
+  const host = window.location.hostname;
+  if (host.includes('ngrok')) {
+    // Ngrok tunnel — use wss via Vite proxy
+    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    return `${protocol}://${window.location.host}/colyseus`;
+  }
+  // Local development
+  return 'ws://localhost:2567';
+}
+
 export class NetworkManager {
   constructor() {
     this.client = null;
@@ -14,7 +25,7 @@ export class NetworkManager {
     this.isConnected = false;
     this.isHost = false;
     this.localPlayerId = null;
-    this.serverUrl = 'ws://localhost:2567';
+    this.serverUrl = getServerUrl();
 
     // Callbacks
     this._onStateChange = null;
@@ -42,15 +53,18 @@ export class NetworkManager {
     if (!this.client) await this.connect();
 
     try {
+      const roomCode = this.generateRoomCode();
       this.room = await this.client.create('dungeon', {
         className,
         dungeon,
         keystoneLevel,
+        roomCode,
       });
       this.localPlayerId = this.room.sessionId;
       this.isHost = true;
       this._setupRoomListeners();
-      console.log(`Created room: ${this.room.state.roomCode}`);
+      this._roomCode = roomCode;
+      console.log(`Created room: ${roomCode}`);
       return this.room;
     } catch (err) {
       console.error('Failed to create room:', err);
@@ -62,19 +76,10 @@ export class NetworkManager {
     if (!this.client) await this.connect();
 
     try {
-      // Find rooms and join by code
-      const rooms = await this.client.getAvailableRooms('dungeon');
-      const target = rooms.find(r => r.metadata?.roomCode === roomCode);
-
-      if (target) {
-        this.room = await this.client.joinById(target.roomId, { className });
-      } else {
-        // Try joining by room ID directly as fallback
-        this.room = await this.client.join('dungeon', { className, roomCode });
-      }
-
+      this.room = await this.client.join('dungeon', { className, roomCode });
       this.localPlayerId = this.room.sessionId;
       this.isHost = false;
+      this._roomCode = roomCode;
       this._setupRoomListeners();
       console.log(`Joined room: ${roomCode}`);
       return this.room;
@@ -82,6 +87,13 @@ export class NetworkManager {
       console.error('Failed to join room:', err);
       return null;
     }
+  }
+
+  generateRoomCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = '';
+    for (let i = 0; i < 4; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
   }
 
   _setupRoomListeners() {
@@ -153,7 +165,7 @@ export class NetworkManager {
    * Get the room code for sharing.
    */
   getRoomCode() {
-    return this.room?.state?.roomCode || '';
+    return this._roomCode || this.room?.state?.roomCode || '';
   }
 
   /**

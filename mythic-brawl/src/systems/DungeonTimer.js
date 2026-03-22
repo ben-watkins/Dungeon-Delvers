@@ -57,6 +57,10 @@ export class DungeonTimer {
     this.running = false;
   }
 
+  setTime(ms) {
+    this.timeRemaining = ms;
+  }
+
   /**
    * Get formatted time string MM:SS
    */

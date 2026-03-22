@@ -545,48 +545,54 @@ export class DungeonScene extends Phaser.Scene {
     const { networkManager } = await import('../systems/NetworkManager.js');
     this.networkManager = networkManager;
 
-    // Listen for remote players joining
-    networkManager.onPlayerJoin((data) => {
-      if (networkManager.isLocalPlayer(data.id)) return;
+    // When a new player is added to server state
+    networkManager.room.state.players.onAdd((player, sessionId) => {
+      if (networkManager.isLocalPlayer(sessionId)) return;
 
-      const remotePlayer = new Player(this, 40, 200, data.className);
+      const remotePlayer = new Player(this, player.x, player.y, player.className);
       remotePlayer.isLocal = false;
       remotePlayer.isRemote = true;
-      remotePlayer.networkId = data.id;
-      this.remotePlayers.set(data.id, remotePlayer);
+      remotePlayer.networkId = sessionId;
+      this.remotePlayers.set(sessionId, remotePlayer);
       this.partyMembers.push(remotePlayer);
       this.allEntities.add(remotePlayer);
+      this.partyGroup.add(remotePlayer);
+      console.log(`Remote player joined: ${sessionId} as ${player.className}`);
+
+      // Listen for changes to this player's properties
+      player.onChange(() => {
+        const remote = this.remotePlayers.get(sessionId);
+        if (remote) {
+          remote.x = player.x;
+          remote.y = player.y;
+          remote.groundY = player.groundY;
+          if (player.facingRight !== undefined) {
+            remote.sprite.setFlipX(!player.facingRight);
+            remote.facingRight = player.facingRight;
+          }
+          if (player.state === 'walk' && remote.sprite.anims.currentAnim?.key !== `${remote.classKey}_walk`) {
+            remote.sprite.play(`${remote.classKey}_walk`, true);
+          } else if (player.state === 'idle' && remote.sprite.anims.currentAnim?.key !== `${remote.classKey}_idle`) {
+            remote.sprite.play(`${remote.classKey}_idle`, true);
+          }
+        }
+      });
     });
 
-    // Listen for remote players leaving
-    networkManager.onPlayerLeave((data) => {
-      const remote = this.remotePlayers.get(data.id);
+    // When a player is removed from server state
+    networkManager.room.state.players.onRemove((player, sessionId) => {
+      const remote = this.remotePlayers.get(sessionId);
       if (remote) {
         this.partyMembers = this.partyMembers.filter(m => m !== remote);
         remote.destroy();
-        this.remotePlayers.delete(data.id);
+        this.remotePlayers.delete(sessionId);
+        console.log(`Remote player left: ${sessionId}`);
       }
     });
 
-    // Sync state from server
-    networkManager.onStateChange((state) => {
-      if (!state.players) return;
-      state.players.forEach((serverPlayer, sessionId) => {
-        if (networkManager.isLocalPlayer(sessionId)) return;
-
-        let remote = this.remotePlayers.get(sessionId);
-        if (!remote) {
-          // New player joined that we don't have yet
-          remote = new Player(this, serverPlayer.x, serverPlayer.y, serverPlayer.className);
-          remote.isLocal = false;
-          remote.isRemote = true;
-          remote.networkId = sessionId;
-          this.remotePlayers.set(sessionId, remote);
-          this.partyMembers.push(remote);
-          this.allEntities.add(remote);
-        }
-        remote.updateFromServer(serverPlayer);
-      });
+    // Listen for game start message
+    networkManager.onGameStarted((data) => {
+      console.log('Game started from server');
     });
   }
 
@@ -642,7 +648,11 @@ export class DungeonScene extends Phaser.Scene {
     }
 
     // Systems
-    this.dungeonTimer.update(delta);
+    if (this.isMultiplayer && this.networkManager?.room?.state) {
+      this.dungeonTimer.setTime(this.networkManager.room.state.timer);
+    } else {
+      this.dungeonTimer.update(delta);
+    }
     this.affixManager.update(delta);
     this.projectileSystem.update(delta);
 

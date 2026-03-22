@@ -96,7 +96,8 @@ export class DungeonRoom extends Room {
 
   onCreate(options) {
     this.setState(new DungeonState());
-    this.state.roomCode = generateRoomCode();
+    this.roomCode = options.roomCode || generateRoomCode();
+    this.state.roomCode = this.roomCode;
     this.state.dungeonKey = options.dungeon || 'deadmines';
     this.state.keystoneLevel = options.keystoneLevel || 2;
     this.state.gamePhase = 'waiting';

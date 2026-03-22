@@ -1,16 +1,5 @@
 /**
- * MAIN MENU SCENE
- * 
- * Title screen with class selection and dungeon/keystone selection.
- * For now: simple text menu that starts the dungeon.
- * 
- * TODO:
- * - Animated title screen with character sprites
- * - Class selection carousel with stat preview
- * - Dungeon selection with M+ keystone level picker
- * - Affix display for selected keystone level
- * - Party composition display (player + 2 AI)
- * - Settings / keybinding screen
+ * MAIN MENU SCENE — Title, class select, dungeon select, multiplayer lobby.
  */
 
 import Phaser from 'phaser';
@@ -22,26 +11,40 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   create() {
+    this.menuPhase = 'classSelect'; // classSelect -> modeSelect -> lobby
+    this.lobbyElements = [];
+    this.selectedClass = 'warrior';
+    this.createClassSelect();
+  }
+
+  clearLobbyElements() {
+    for (const el of this.lobbyElements) {
+      if (el.destroy) el.destroy();
+    }
+    this.lobbyElements = [];
+    // Remove any DOM elements
+    if (this.roomCodeInput) {
+      this.roomCodeInput.destroy();
+      this.roomCodeInput = null;
+    }
+  }
+
+  // ─── PHASE 1: CLASS + DUNGEON SELECT ────────────────────
+
+  createClassSelect() {
     const { width, height } = this.cameras.main;
 
     // Title
     this.add.text(width / 2, height * 0.15, 'MYTHIC BRAWL', {
-      fontSize: '32px',
-      fontFamily: 'monospace',
-      color: '#80d8ff',
+      fontSize: '32px', fontFamily: 'monospace', color: '#80d8ff',
     }).setOrigin(0.5).setResolution(4);
 
     this.add.text(width / 2, height * 0.28, 'Streets of Rage meets Mythic+', {
-      fontSize: '10px',
-      fontFamily: 'monospace',
-      color: '#606080',
+      fontSize: '10px', fontFamily: 'monospace', color: '#606080',
     }).setOrigin(0.5).setResolution(4);
 
-    // "Choose your class" label
     this.add.text(width / 2, height * 0.38, 'Choose your class', {
-      fontSize: '10px',
-      fontFamily: 'monospace',
-      color: '#808098',
+      fontSize: '10px', fontFamily: 'monospace', color: '#808098',
     }).setOrigin(0.5).setResolution(4);
 
     // Class selection
@@ -59,21 +62,15 @@ export class MainMenuScene extends Phaser.Scene {
       const spriteY = height * 0.52;
       const labelY = height * 0.64;
 
-      // Animated sprite preview — plays idle animation
       const sprite = this.add.sprite(x, spriteY, cls.key, 0);
       sprite.play(`${cls.key}_idle`);
 
-      // Selection highlight box (drawn behind sprite)
       const box = this.add.rectangle(x, spriteY, 64, 64, 0xffffff, 0)
         .setStrokeStyle(1, Phaser.Display.Color.HexStringToColor(cls.color).color, 0);
 
-      // Class name + role label
       const label = this.add.text(x, labelY, `${cls.name}\n${cls.role}`, {
-        fontSize: '10px',
-        fontFamily: 'monospace',
-        color: cls.color,
-        align: 'center',
-        lineSpacing: 2,
+        fontSize: '10px', fontFamily: 'monospace', color: cls.color,
+        align: 'center', lineSpacing: 2,
       }).setOrigin(0.5).setResolution(4).setInteractive();
 
       label.on('pointerdown', () => {
@@ -84,10 +81,9 @@ export class MainMenuScene extends Phaser.Scene {
       this.classSlots.push({ sprite, box, label, cls });
     });
 
-    // Apply initial selection highlight
     this.updateSelection();
 
-    // Left/right arrows hint
+    // Arrows
     this.add.text(width * 0.25 - 36, height * 0.52, '<', {
       fontSize: '14px', fontFamily: 'monospace', color: '#404060',
     }).setOrigin(0.5).setResolution(4);
@@ -99,46 +95,49 @@ export class MainMenuScene extends Phaser.Scene {
     this.dungeonKeys = Object.keys(DUNGEONS);
     this.dungeonIndex = 0;
     this.dungeonText = this.add.text(width / 2, height * 0.73, this.getDungeonLabel(), {
-      fontSize: '10px',
-      fontFamily: 'monospace',
-      color: '#60cc80',
+      fontSize: '10px', fontFamily: 'monospace', color: '#60cc80',
     }).setOrigin(0.5).setResolution(4);
 
     // Keystone level
     this.keystoneLevel = 2;
-    this.keystoneText = this.add.text(width / 2, height * 0.81, `Keystone Level: +${this.keystoneLevel}   [UP/DOWN]`, {
-      fontSize: '10px',
-      fontFamily: 'monospace',
-      color: '#d4b040',
+    this.keystoneText = this.add.text(width / 2, height * 0.80, `Keystone Level: +${this.keystoneLevel}   [UP/DOWN]`, {
+      fontSize: '10px', fontFamily: 'monospace', color: '#d4b040',
     }).setOrigin(0.5).setResolution(4);
 
-    // Start prompt
-    this.add.text(width / 2, height * 0.90, 'Press ENTER to start', {
-      fontSize: '10px',
-      fontFamily: 'monospace',
-      color: '#707090',
-    }).setOrigin(0.5).setResolution(4);
+    // Mode buttons — Solo and Multiplayer
+    const soloBtn = this.add.text(width * 0.3, height * 0.90, '[ SOLO PLAY ]', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#44cc44',
+    }).setOrigin(0.5).setResolution(4).setInteractive({ useHandCursor: true });
+    soloBtn.on('pointerdown', () => this.startSolo());
+    soloBtn.on('pointerover', () => soloBtn.setColor('#88ff88'));
+    soloBtn.on('pointerout', () => soloBtn.setColor('#44cc44'));
 
-    // Input — class selection
+    const mpBtn = this.add.text(width * 0.7, height * 0.90, '[ MULTIPLAYER ]', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#80d8ff',
+    }).setOrigin(0.5).setResolution(4).setInteractive({ useHandCursor: true });
+    mpBtn.on('pointerdown', () => this.showModeSelect());
+    mpBtn.on('pointerover', () => mpBtn.setColor('#aaeeff'));
+    mpBtn.on('pointerout', () => mpBtn.setColor('#80d8ff'));
+
+    // Keyboard shortcuts
     this.input.keyboard.on('keydown-LEFT', () => {
       this.selectedIndex = (this.selectedIndex - 1 + this.classes.length) % this.classes.length;
       this.updateSelection();
     });
-    this.input.keyboard.on('keydown-A', () => {
-      this.selectedIndex = (this.selectedIndex - 1 + this.classes.length) % this.classes.length;
-      this.updateSelection();
-    });
-
     this.input.keyboard.on('keydown-RIGHT', () => {
       this.selectedIndex = (this.selectedIndex + 1) % this.classes.length;
       this.updateSelection();
     });
+    this.input.keyboard.on('keydown-A', () => {
+      if (this.menuPhase !== 'classSelect') return;
+      this.selectedIndex = (this.selectedIndex - 1 + this.classes.length) % this.classes.length;
+      this.updateSelection();
+    });
     this.input.keyboard.on('keydown-D', () => {
+      if (this.menuPhase !== 'classSelect') return;
       this.selectedIndex = (this.selectedIndex + 1) % this.classes.length;
       this.updateSelection();
     });
-
-    // Input — dungeon selector (W/S)
     this.input.keyboard.on('keydown-W', () => {
       this.dungeonIndex = (this.dungeonIndex + 1) % this.dungeonKeys.length;
       this.dungeonText.setText(this.getDungeonLabel());
@@ -147,8 +146,6 @@ export class MainMenuScene extends Phaser.Scene {
       this.dungeonIndex = (this.dungeonIndex - 1 + this.dungeonKeys.length) % this.dungeonKeys.length;
       this.dungeonText.setText(this.getDungeonLabel());
     });
-
-    // Input — keystone level (UP/DOWN arrows)
     this.input.keyboard.on('keydown-UP', () => {
       this.keystoneLevel = Math.min(30, this.keystoneLevel + 1);
       this.keystoneText.setText(`Keystone Level: +${this.keystoneLevel}   [UP/DOWN]`);
@@ -157,28 +154,323 @@ export class MainMenuScene extends Phaser.Scene {
       this.keystoneLevel = Math.max(2, this.keystoneLevel - 1);
       this.keystoneText.setText(`Keystone Level: +${this.keystoneLevel}   [UP/DOWN]`);
     });
-
-    // Input — start
     this.input.keyboard.on('keydown-ENTER', () => {
-      this.startDungeon();
+      if (this.menuPhase === 'classSelect') this.startSolo();
     });
 
-    // Gamepad support — poll in update loop
     this.padPrev = {};
   }
+
+  // ─── PHASE 2: MULTIPLAYER MODE SELECT ───────────────────
+
+  showModeSelect() {
+    this.menuPhase = 'modeSelect';
+    this.clearLobbyElements();
+    const { width, height } = this.cameras.main;
+
+    // Overlay
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.8)
+      .setDepth(10);
+    this.lobbyElements.push(overlay);
+
+    const title = this.add.text(width / 2, height * 0.2, 'MULTIPLAYER', {
+      fontSize: '18px', fontFamily: 'monospace', color: '#80d8ff',
+    }).setOrigin(0.5).setResolution(4).setDepth(11);
+    this.lobbyElements.push(title);
+
+    const classInfo = this.add.text(width / 2, height * 0.35, `Playing as: ${this.selectedClass.toUpperCase()}`, {
+      fontSize: '10px', fontFamily: 'monospace', color: '#b0b0c8',
+    }).setOrigin(0.5).setResolution(4).setDepth(11);
+    this.lobbyElements.push(classInfo);
+
+    // Host button
+    const hostBtn = this.add.text(width / 2, height * 0.50, '[ HOST GAME ]', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#44cc44',
+    }).setOrigin(0.5).setResolution(4).setDepth(11).setInteractive({ useHandCursor: true });
+    hostBtn.on('pointerdown', () => this.hostGame());
+    hostBtn.on('pointerover', () => hostBtn.setColor('#88ff88'));
+    hostBtn.on('pointerout', () => hostBtn.setColor('#44cc44'));
+    this.lobbyElements.push(hostBtn);
+
+    // Join button
+    const joinBtn = this.add.text(width / 2, height * 0.65, '[ JOIN GAME ]', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#d4b040',
+    }).setOrigin(0.5).setResolution(4).setDepth(11).setInteractive({ useHandCursor: true });
+    joinBtn.on('pointerdown', () => this.showJoinInput());
+    joinBtn.on('pointerover', () => joinBtn.setColor('#ffdd66'));
+    joinBtn.on('pointerout', () => joinBtn.setColor('#d4b040'));
+    this.lobbyElements.push(joinBtn);
+
+    // Back button
+    const backBtn = this.add.text(width / 2, height * 0.82, '[ BACK ]', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#707090',
+    }).setOrigin(0.5).setResolution(4).setDepth(11).setInteractive({ useHandCursor: true });
+    backBtn.on('pointerdown', () => {
+      this.clearLobbyElements();
+      this.menuPhase = 'classSelect';
+    });
+    this.lobbyElements.push(backBtn);
+  }
+
+  // ─── PHASE 3a: HOST GAME → LOBBY ───────────────────────
+
+  async hostGame() {
+    this.clearLobbyElements();
+    const { width, height } = this.cameras.main;
+
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.85)
+      .setDepth(10);
+    this.lobbyElements.push(overlay);
+
+    const connecting = this.add.text(width / 2, height / 2, 'Connecting...', {
+      fontSize: '12px', fontFamily: 'monospace', color: '#80d8ff',
+    }).setOrigin(0.5).setResolution(4).setDepth(11);
+    this.lobbyElements.push(connecting);
+
+    const { networkManager } = await import('../systems/NetworkManager.js');
+    const room = await networkManager.createRoom(
+      this.selectedClass,
+      this.dungeonKeys[this.dungeonIndex],
+      this.keystoneLevel
+    );
+
+    connecting.destroy();
+
+    if (!room) {
+      const err = this.add.text(width / 2, height / 2, 'Failed to connect!\nIs the server running?', {
+        fontSize: '10px', fontFamily: 'monospace', color: '#cc4444', align: 'center',
+      }).setOrigin(0.5).setResolution(4).setDepth(11);
+      this.lobbyElements.push(err);
+      this.time.delayedCall(2000, () => this.showModeSelect());
+      return;
+    }
+
+    this.networkManager = networkManager;
+    this.showLobby(true);
+  }
+
+  // ─── PHASE 3b: JOIN GAME → CODE INPUT → LOBBY ──────────
+
+  showJoinInput() {
+    this.clearLobbyElements();
+    const { width, height } = this.cameras.main;
+
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.85)
+      .setDepth(10);
+    this.lobbyElements.push(overlay);
+
+    const title = this.add.text(width / 2, height * 0.25, 'ENTER ROOM CODE', {
+      fontSize: '14px', fontFamily: 'monospace', color: '#d4b040',
+    }).setOrigin(0.5).setResolution(4).setDepth(11);
+    this.lobbyElements.push(title);
+
+    // Room code display (typed by player)
+    this.joinCode = '';
+    this.joinCodeText = this.add.text(width / 2, height * 0.45, '_ _ _ _', {
+      fontSize: '24px', fontFamily: 'monospace', color: '#ffffff',
+    }).setOrigin(0.5).setResolution(4).setDepth(11);
+    this.lobbyElements.push(this.joinCodeText);
+
+    const hint = this.add.text(width / 2, height * 0.60, 'Type the 4-character code', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#707090',
+    }).setOrigin(0.5).setResolution(4).setDepth(11);
+    this.lobbyElements.push(hint);
+
+    // Back button
+    const backBtn = this.add.text(width / 2, height * 0.80, '[ BACK ]', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#707090',
+    }).setOrigin(0.5).setResolution(4).setDepth(11).setInteractive({ useHandCursor: true });
+    backBtn.on('pointerdown', () => this.showModeSelect());
+    this.lobbyElements.push(backBtn);
+
+    // Listen for typed characters
+    this.menuPhase = 'joinInput';
+    this.input.keyboard.on('keydown', this.handleJoinKeydown = (event) => {
+      if (this.menuPhase !== 'joinInput') return;
+
+      if (event.key === 'Backspace') {
+        this.joinCode = this.joinCode.slice(0, -1);
+      } else if (event.key.length === 1 && this.joinCode.length < 4) {
+        this.joinCode += event.key.toUpperCase();
+      }
+
+      // Update display
+      const display = this.joinCode.padEnd(4, '_').split('').join(' ');
+      this.joinCodeText.setText(display);
+
+      // Auto-submit when 4 characters entered
+      if (this.joinCode.length === 4) {
+        this.joinGame(this.joinCode);
+      }
+    });
+  }
+
+  async joinGame(roomCode) {
+    this.menuPhase = 'joining';
+    this.input.keyboard.off('keydown', this.handleJoinKeydown);
+    this.clearLobbyElements();
+    const { width, height } = this.cameras.main;
+
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.85)
+      .setDepth(10);
+    this.lobbyElements.push(overlay);
+
+    const connecting = this.add.text(width / 2, height / 2, `Joining ${roomCode}...`, {
+      fontSize: '12px', fontFamily: 'monospace', color: '#d4b040',
+    }).setOrigin(0.5).setResolution(4).setDepth(11);
+    this.lobbyElements.push(connecting);
+
+    const { networkManager } = await import('../systems/NetworkManager.js');
+    const room = await networkManager.joinRoom(roomCode, this.selectedClass);
+
+    connecting.destroy();
+
+    if (!room) {
+      const err = this.add.text(width / 2, height / 2, 'Failed to join!\nInvalid code or room full.', {
+        fontSize: '10px', fontFamily: 'monospace', color: '#cc4444', align: 'center',
+      }).setOrigin(0.5).setResolution(4).setDepth(11);
+      this.lobbyElements.push(err);
+      this.time.delayedCall(2000, () => this.showModeSelect());
+      return;
+    }
+
+    this.networkManager = networkManager;
+    this.showLobby(false);
+  }
+
+  // ─── PHASE 4: LOBBY (HOST + JOIN) ──────────────────────
+
+  showLobby(isHost) {
+    this.clearLobbyElements();
+    this.menuPhase = 'lobby';
+    const { width, height } = this.cameras.main;
+    const nm = this.networkManager;
+
+    const overlay = this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.85)
+      .setDepth(10);
+    this.lobbyElements.push(overlay);
+
+    // Room code — large and prominent
+    const codeLabel = this.add.text(width / 2, height * 0.12, 'ROOM CODE', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#707090',
+    }).setOrigin(0.5).setResolution(4).setDepth(11);
+    this.lobbyElements.push(codeLabel);
+
+    const codeText = this.add.text(width / 2, height * 0.22, nm.getRoomCode() || '...', {
+      fontSize: '28px', fontFamily: 'monospace', color: '#44ff44',
+    }).setOrigin(0.5).setResolution(4).setDepth(11);
+    this.lobbyElements.push(codeText);
+
+    const shareHint = this.add.text(width / 2, height * 0.32, 'Share this code with friends', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#505068',
+    }).setOrigin(0.5).setResolution(4).setDepth(11);
+    this.lobbyElements.push(shareHint);
+
+    const codePoller = this.time.addEvent({
+      delay: 200,
+      loop: true,
+      callback: () => {
+        const code = nm.getRoomCode();
+        if (code) {
+          codeText.setText(code);
+          codePoller.remove();
+        }
+      },
+    });
+    this.lobbyElements.push({ destroy: () => codePoller.remove() });
+
+    // Player list
+    const playersLabel = this.add.text(width / 2, height * 0.42, 'PLAYERS', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#b0b0c8',
+    }).setOrigin(0.5).setResolution(4).setDepth(11);
+    this.lobbyElements.push(playersLabel);
+
+    // Player slots (up to 4)
+    this.playerSlotTexts = [];
+    for (let i = 0; i < 4; i++) {
+      const slotY = height * 0.50 + i * 14;
+      const slot = this.add.text(width / 2, slotY, `${i + 1}. Waiting...`, {
+        fontSize: '9px', fontFamily: 'monospace', color: '#404060',
+      }).setOrigin(0.5).setResolution(4).setDepth(11);
+      this.playerSlotTexts.push(slot);
+      this.lobbyElements.push(slot);
+    }
+
+    // Start button (host only)
+    if (isHost) {
+      const startBtn = this.add.text(width / 2, height * 0.88, '[ START GAME ]', {
+        fontSize: '12px', fontFamily: 'monospace', color: '#44cc44',
+      }).setOrigin(0.5).setResolution(4).setDepth(11).setInteractive({ useHandCursor: true });
+      startBtn.on('pointerdown', () => {
+        nm.startGame();
+      });
+      startBtn.on('pointerover', () => startBtn.setColor('#88ff88'));
+      startBtn.on('pointerout', () => startBtn.setColor('#44cc44'));
+      this.lobbyElements.push(startBtn);
+    } else {
+      const waitText = this.add.text(width / 2, height * 0.88, 'Waiting for host to start...', {
+        fontSize: '9px', fontFamily: 'monospace', color: '#707090',
+      }).setOrigin(0.5).setResolution(4).setDepth(11);
+      this.lobbyElements.push(waitText);
+    }
+
+    // Update player list from server state
+    this.updateLobbyPlayers();
+
+    // Listen for player join/leave to update the list
+    nm.room.state.players.onAdd(() => this.updateLobbyPlayers());
+    nm.room.state.players.onRemove(() => this.updateLobbyPlayers());
+
+    // Listen for game start
+    nm.onGameStarted((data) => {
+      this.clearLobbyElements();
+      this.scene.start('DungeonScene', {
+        playerClass: this.selectedClass,
+        dungeon: data.dungeonKey,
+        keystoneLevel: data.keystoneLevel,
+        multiplayer: true,
+        isHost: nm.isHost,
+      });
+    });
+  }
+
+  updateLobbyPlayers() {
+    if (!this.networkManager?.room?.state?.players || !this.playerSlotTexts) return;
+
+    const classColors = {
+      warrior: '#8898b8', priest: '#90a8d8', rogue: '#cc6666',
+    };
+
+    let i = 0;
+    this.networkManager.room.state.players.forEach((player) => {
+      if (i >= this.playerSlotTexts.length) return;
+      const isLocal = this.networkManager.isLocalPlayer(player.id);
+      const hostMark = player.id === this.networkManager.room.state.players.keys().next().value ? ' (Host)' : '';
+      const youMark = isLocal ? ' ← YOU' : '';
+      this.playerSlotTexts[i].setText(
+        `${i + 1}. ${player.className.toUpperCase()}${hostMark}${youMark}`
+      );
+      this.playerSlotTexts[i].setColor(classColors[player.className] || '#b0b0c8');
+      i++;
+    });
+
+    // Clear remaining slots
+    for (; i < this.playerSlotTexts.length; i++) {
+      this.playerSlotTexts[i].setText(`${i + 1}. Waiting...`);
+      this.playerSlotTexts[i].setColor('#404060');
+    }
+  }
+
+  // ─── SHARED METHODS ────────────────────────────────────
 
   update() {
     const pad = this.input.gamepad && this.input.gamepad.total > 0
       ? this.input.gamepad.pad1 : null;
     if (!pad) return;
 
-    // D-pad / left stick — class selection (left/right) and keystone (up/down)
     const stickX = Math.abs(pad.leftStick.x) > 0.5 ? Math.sign(pad.leftStick.x) : 0;
-    const stickY = Math.abs(pad.leftStick.y) > 0.5 ? Math.sign(pad.leftStick.y) : 0;
     const left = pad.left || stickX < 0;
     const right = pad.right || stickX > 0;
-    const up = pad.up || stickY < 0;
-    const down = pad.down || stickY > 0;
 
     if (left && !this.padPrev.left) {
       this.selectedIndex = (this.selectedIndex - 1 + this.classes.length) % this.classes.length;
@@ -188,94 +480,41 @@ export class MainMenuScene extends Phaser.Scene {
       this.selectedIndex = (this.selectedIndex + 1) % this.classes.length;
       this.updateSelection();
     }
-    if (up && !this.padPrev.up) {
-      this.keystoneLevel = Math.min(30, this.keystoneLevel + 1);
-      this.keystoneText.setText(`Keystone Level: +${this.keystoneLevel}   [UP/DOWN]`);
-    }
-    if (down && !this.padPrev.down) {
-      this.keystoneLevel = Math.max(2, this.keystoneLevel - 1);
-      this.keystoneText.setText(`Keystone Level: +${this.keystoneLevel}   [UP/DOWN]`);
-    }
 
-    // A button (index 0) or Start button (index 9) — start game
     const btnA = pad.buttons[0] && pad.buttons[0].pressed;
-    const btnStart = pad.buttons[9] && pad.buttons[9].pressed;
-    if ((btnA && !this.padPrev.a) || (btnStart && !this.padPrev.start)) {
-      this.startDungeon();
+    if (btnA && !this.padPrev.a && this.menuPhase === 'classSelect') {
+      this.startSolo();
     }
 
     this.padPrev.left = left;
     this.padPrev.right = right;
-    this.padPrev.up = up;
-    this.padPrev.down = down;
     this.padPrev.a = btnA;
-    this.padPrev.start = btnStart;
   }
 
   updateSelection() {
     this.classes.forEach((cls, i) => {
       const slot = this.classSlots[i];
       const selected = i === this.selectedIndex;
-
-      // Highlight box — visible only on selected
       const clsColor = Phaser.Display.Color.HexStringToColor(cls.color).color;
       slot.box.setStrokeStyle(selected ? 2 : 1, clsColor, selected ? 1 : 0);
       slot.box.setFillStyle(0xffffff, selected ? 0.05 : 0);
-
-      // Dim non-selected sprites
       slot.sprite.setAlpha(selected ? 1 : 0.4);
-
-      // Brighten selected label
       slot.label.setColor(selected ? '#ffffff' : cls.color);
     });
-
     this.selectedClass = this.classes[this.selectedIndex].key;
   }
 
   getDungeonLabel() {
     const key = this.dungeonKeys[this.dungeonIndex];
-    const name = DUNGEONS[key].name;
-    return `Dungeon: ${name}   [W/S]`;
+    return `Dungeon: ${DUNGEONS[key].name}   [W/S]`;
   }
 
-  startDungeon() {
+  startSolo() {
     this.scene.start('DungeonScene', {
       playerClass: this.selectedClass,
       dungeon: this.dungeonKeys[this.dungeonIndex],
       keystoneLevel: this.keystoneLevel,
       multiplayer: false,
     });
-  }
-
-  async hostMultiplayer() {
-    const { networkManager } = await import('../systems/NetworkManager.js');
-    const room = await networkManager.createRoom(
-      this.selectedClass,
-      this.dungeonKeys[this.dungeonIndex],
-      this.keystoneLevel
-    );
-    if (room) {
-      this.scene.start('DungeonScene', {
-        playerClass: this.selectedClass,
-        dungeon: this.dungeonKeys[this.dungeonIndex],
-        keystoneLevel: this.keystoneLevel,
-        multiplayer: true,
-        isHost: true,
-      });
-    }
-  }
-
-  async joinMultiplayer(roomCode) {
-    const { networkManager } = await import('../systems/NetworkManager.js');
-    const room = await networkManager.joinRoom(roomCode, this.selectedClass);
-    if (room) {
-      this.scene.start('DungeonScene', {
-        playerClass: this.selectedClass,
-        dungeon: room.state.dungeonKey,
-        keystoneLevel: room.state.keystoneLevel,
-        multiplayer: true,
-        isHost: false,
-      });
-    }
   }
 }

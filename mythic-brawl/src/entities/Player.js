@@ -1012,6 +1012,9 @@ export class Player extends Phaser.GameObjects.Container {
   }
 
   update(time, dt) {
+    // Remote players are updated via server state sync, not local input
+    if (this.isRemote) return;
+
     // Hit stop — freeze everything
     if (this.hitStopTimer > 0) {
       this.hitStopTimer -= dt;

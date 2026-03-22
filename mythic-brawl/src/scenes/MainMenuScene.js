@@ -243,6 +243,39 @@ export class MainMenuScene extends Phaser.Scene {
       playerClass: this.selectedClass,
       dungeon: this.dungeonKeys[this.dungeonIndex],
       keystoneLevel: this.keystoneLevel,
+      multiplayer: false,
     });
+  }
+
+  async hostMultiplayer() {
+    const { networkManager } = await import('../systems/NetworkManager.js');
+    const room = await networkManager.createRoom(
+      this.selectedClass,
+      this.dungeonKeys[this.dungeonIndex],
+      this.keystoneLevel
+    );
+    if (room) {
+      this.scene.start('DungeonScene', {
+        playerClass: this.selectedClass,
+        dungeon: this.dungeonKeys[this.dungeonIndex],
+        keystoneLevel: this.keystoneLevel,
+        multiplayer: true,
+        isHost: true,
+      });
+    }
+  }
+
+  async joinMultiplayer(roomCode) {
+    const { networkManager } = await import('../systems/NetworkManager.js');
+    const room = await networkManager.joinRoom(roomCode, this.selectedClass);
+    if (room) {
+      this.scene.start('DungeonScene', {
+        playerClass: this.selectedClass,
+        dungeon: room.state.dungeonKey,
+        keystoneLevel: room.state.keystoneLevel,
+        multiplayer: true,
+        isHost: false,
+      });
+    }
   }
 }

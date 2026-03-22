@@ -120,7 +120,7 @@ export const CLASSES = {
   priest: {
     name: 'Priest',
     role: 'healer',
-    stats: { hp: 90, speed: 86, power: 3.0, defense: 0.8 },
+    stats: { hp: 90, speed: 86, power: 1.05, defense: 0.8 },
     combo: ['priest_atk1', 'priest_atk2', 'priest_atk3'],
     rangedAttack: {
       damage: 4,
@@ -134,22 +134,22 @@ export const CLASSES = {
         name: 'Holy Light',
         key: 'priest_holylight',
         cooldown: 4000,
-        healAmount: 40,
+        healAmount: 20,
         description: 'Heals the lowest HP party member.',
       },
       special2: {
         name: 'Divine Nova',
         key: 'priest_nova',
         cooldown: 8000,
-        healAmount: 20,
-        damage: 1.8,
+        healAmount: 10,
+        damage: 0.63,
         description: 'AoE burst: damages nearby enemies and heals all party members.',
       },
       special3: {
         name: 'Divine Ascension',
         key: 'priest_ascension',
         cooldown: 10000,
-        healPerBlob: 25,
+        healPerBlob: 12,
         blobCount: 6,
         duration: 3000,
         description: 'Levitate and lob healing orbs to all allies over 3 seconds.',
@@ -307,36 +307,13 @@ export const DUNGEONS = {
       floorProps: [1, 2, 1],         // barrel, bones, barrel
     },
     rooms: [
-      { type: 'hallway', enemies: ['imp', 'imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight'] },
-      { type: 'arena', enemies: ['imp', 'imp', 'imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight'] },
-      { type: 'hallway', enemies: ['imp', 'imp', 'hellknight'] },
-      { type: 'arena', enemies: ['imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight', 'hellknight'] },
-      { type: 'hallway', enemies: ['imp', 'imp', 'imp', 'imp', 'hellknight', 'hellknight'] },
-      { type: 'arena', enemies: ['imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight', 'hellknight', 'hellknight'] },
+      { type: 'hallway', enemies: ['imp', 'imp', 'imp', 'hellknight'] },
+      { type: 'arena', enemies: ['imp', 'imp', 'imp', 'imp', 'hellknight', 'hellknight'] },
+      { type: 'hallway', enemies: ['imp', 'imp', 'hellknight', 'hellknight'] },
+      { type: 'arena', enemies: ['imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight'] },
+      { type: 'hallway', enemies: ['imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight'] },
+      { type: 'arena', enemies: ['imp', 'imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight', 'hellknight'] },
       { type: 'boss', boss: 'pitlord' },
-      {
-        type: 'bossArena',
-        width: 1440,  // 3x normal screen width
-        environment: {
-          bgKey: 'bossroom_bg',
-          tileSheet: 'bossroom_tiles',
-          propSheet: 'bossroom_props',
-          // Tile frames: 0-3=dark stone, 4-7=fire grate, 8-11=blood channels, 12-15=blood-stained stone
-          // Row 1: 16-19=arena edge, 20-23=more variants
-          floorCenter: [4, 5, 6, 7],       // fire grate tiles in center
-          floorRadial: [8, 9, 10, 11],     // blood channels radiating out
-          floorEdge: [12, 13, 14, 15],     // blood-stained stone at edges
-          arenaEdge: [16, 17, 18, 19],     // arena boundary tiles
-          // Props: 0=fire brazier, 1=meat hook, 2=skull pile, 3=weapon rack, 4=blood pool,
-          //        5=painting, 6=iron maiden, 7=hanging chains, 8=more chains, 9=demonic rune
-          brazier: 0,
-          skullPile: 2,
-          weaponRack: 3,
-          hangingChains: 7,
-          meatHook: 1,
-          runeCircle: 9,
-        },
-      },
     ],
   },
 

@@ -30,6 +30,9 @@ export class Player extends Phaser.GameObjects.Container {
     this.groundY = y;
     this.jumpZ = 0;
     this.facingRight = true;
+    this.isLocal = true;      // False for remote multiplayer players
+    this.isRemote = false;    // Set true for network-controlled players
+    this.networkId = null;    // Server session ID for multiplayer
 
     // Stats
     this.maxHp = this.classData.stats.hp;
@@ -217,6 +220,10 @@ export class Player extends Phaser.GameObjects.Container {
               this.fsm.transition('idle');
             }
           });
+          // Safety timeout
+          this.scene.time.delayedCall(1000, () => {
+            if (this.fsm.is('attack')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+          });
         },
         update(dt) {
           this.handleMovementInput(dt);
@@ -307,6 +314,9 @@ export class Player extends Phaser.GameObjects.Container {
             this.fsm.locked = false;
             this.fsm.transition('idle');
           });
+          this.scene.time.delayedCall(800, () => {
+            if (this.fsm.is('special1')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+          });
         },
         update(dt) { this.handleMovementInput(dt); },
         transitions: { idle: 'idle', hitstun: 'hitstun', death: 'death' },
@@ -333,6 +343,9 @@ export class Player extends Phaser.GameObjects.Container {
           this.sprite.once('animationcomplete', () => {
             this.fsm.locked = false;
             this.fsm.transition('idle');
+          });
+          this.scene.time.delayedCall(800, () => {
+            if (this.fsm.is('special2')) { this.fsm.locked = false; this.fsm.transition('idle'); }
           });
         },
         update(dt) { this.handleMovementInput(dt); },
@@ -676,6 +689,13 @@ export class Player extends Phaser.GameObjects.Container {
             this.sprite.once('animationcomplete', () => {
               this.fsm.locked = false;
               this.fsm.transition('idle');
+            });
+            // Safety timeout — unlock after 800ms in case animation doesn't fire
+            this.scene.time.delayedCall(800, () => {
+              if (this.fsm.is('special4')) {
+                this.fsm.locked = false;
+                this.fsm.transition('idle');
+              }
             });
           } else if (!this.chargeHit) {
             // Charge at high speed toward target
@@ -1086,6 +1106,54 @@ export class Player extends Phaser.GameObjects.Container {
       if (effect.timer <= 0) {
         this.statusEffects.splice(i, 1);
       }
+    }
+  }
+
+  /**
+   * Get current input state for sending to server (multiplayer).
+   */
+  getInputState() {
+    return {
+      left: this.keys.left.isDown || (this.pad && this.pad.leftStick.x < -0.2),
+      right: this.keys.right.isDown || (this.pad && this.pad.leftStick.x > 0.2),
+      up: this.keys.up.isDown || (this.pad && this.pad.leftStick.y < -0.2),
+      down: this.keys.down.isDown || (this.pad && this.pad.leftStick.y > 0.2),
+      attack: this.attackJustPressed,
+      special1: this.special1JustPressed,
+      special2: this.special2JustPressed,
+      special3: this.special3JustPressed,
+      special4: this.special4JustPressed,
+      special5: this.special5JustPressed,
+      sprint: this.keys.sprint.isDown,
+    };
+  }
+
+  /**
+   * Update this player from server state (remote multiplayer player).
+   * Interpolates position for smooth movement.
+   */
+  updateFromServer(serverState) {
+    if (!this.isRemote) return;
+
+    // Interpolate position
+    const lerpSpeed = 0.3;
+    this.x += (serverState.x - this.x) * lerpSpeed;
+    this.groundY += (serverState.groundY - this.groundY) * lerpSpeed;
+    this.y = this.groundY - this.jumpZ;
+
+    // Snap state
+    this.hp = serverState.hp;
+    this.facingRight = serverState.facingRight;
+    this.sprite.setFlipX(!this.facingRight);
+
+    // Update animation based on server state
+    const serverAnim = serverState.state;
+    if (serverAnim === 'walk' && !this.sprite.anims.currentAnim?.key?.includes('walk')) {
+      this.sprite.play(`${this.classKey}_walk`, true);
+    } else if (serverAnim === 'idle' && !this.sprite.anims.currentAnim?.key?.includes('idle')) {
+      this.sprite.play(`${this.classKey}_idle`, true);
+    } else if (serverAnim === 'attack' && !this.sprite.anims.currentAnim?.key?.includes('atk')) {
+      this.sprite.play(`${this.classKey}_atk1`, true);
     }
   }
 }

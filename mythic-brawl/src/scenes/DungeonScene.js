@@ -38,6 +38,9 @@ export class DungeonScene extends Phaser.Scene {
     this.playerClass = data.playerClass || 'warrior';
     this.dungeonKey = data.dungeon || 'deadmines';
     this.keystoneLevel = data.keystoneLevel || 2;
+    this.isMultiplayer = data.multiplayer || false;
+    this.isHost = data.isHost || false;
+    this.remotePlayers = new Map(); // sessionId -> Player instance
   }
 
   create() {
@@ -68,15 +71,19 @@ export class DungeonScene extends Phaser.Scene {
     this.partyMembers.push(this.player);
     this.allEntities.add(this.player);
 
-    // Create AI companions (the 2 classes the player didn't pick)
-    const allClasses = ['warrior', 'priest', 'rogue'];
-    const aiClasses = allClasses.filter(c => c !== this.playerClass);
-    aiClasses.forEach((cls, i) => {
-      const companion = new AICompanion(this, 30 + i * 15, 195 + i * 10, cls);
-      companion.followIndex = i;  // Stagger formation position behind player
-      this.partyMembers.push(companion);
-      this.allEntities.add(companion);
-    });
+    // Create party — AI companions in solo, remote players in multiplayer
+    if (this.isMultiplayer) {
+      this.setupMultiplayer();
+    } else {
+      const allClasses = ['warrior', 'priest', 'rogue'];
+      const aiClasses = allClasses.filter(c => c !== this.playerClass);
+      aiClasses.forEach((cls, i) => {
+        const companion = new AICompanion(this, 30 + i * 15, 195 + i * 10, cls);
+        companion.followIndex = i;
+        this.partyMembers.push(companion);
+        this.allEntities.add(companion);
+      });
+    }
 
     // Physics collision groups — prevent walk-through
     this.partyGroup = this.physics.add.group();
@@ -87,9 +94,8 @@ export class DungeonScene extends Phaser.Scene {
       this.partyGroup.add(member);
     }
 
-    // Colliders: party vs enemies, enemies vs enemies
-    this.physics.add.collider(this.partyGroup, this.enemyGroup);
-    this.physics.add.collider(this.enemyGroup, this.enemyGroup);
+    // Soft push between entities — no hard physics colliders that create invisible walls
+    // Instead, apply gentle separation force in update loop
 
     // Tab targeting
     this.tabTargetIndex = -1;
@@ -535,6 +541,55 @@ export class DungeonScene extends Phaser.Scene {
   /**
    * PUBLIC: Get alive party members (player + AI companions)
    */
+  async setupMultiplayer() {
+    const { networkManager } = await import('../systems/NetworkManager.js');
+    this.networkManager = networkManager;
+
+    // Listen for remote players joining
+    networkManager.onPlayerJoin((data) => {
+      if (networkManager.isLocalPlayer(data.id)) return;
+
+      const remotePlayer = new Player(this, 40, 200, data.className);
+      remotePlayer.isLocal = false;
+      remotePlayer.isRemote = true;
+      remotePlayer.networkId = data.id;
+      this.remotePlayers.set(data.id, remotePlayer);
+      this.partyMembers.push(remotePlayer);
+      this.allEntities.add(remotePlayer);
+    });
+
+    // Listen for remote players leaving
+    networkManager.onPlayerLeave((data) => {
+      const remote = this.remotePlayers.get(data.id);
+      if (remote) {
+        this.partyMembers = this.partyMembers.filter(m => m !== remote);
+        remote.destroy();
+        this.remotePlayers.delete(data.id);
+      }
+    });
+
+    // Sync state from server
+    networkManager.onStateChange((state) => {
+      if (!state.players) return;
+      state.players.forEach((serverPlayer, sessionId) => {
+        if (networkManager.isLocalPlayer(sessionId)) return;
+
+        let remote = this.remotePlayers.get(sessionId);
+        if (!remote) {
+          // New player joined that we don't have yet
+          remote = new Player(this, serverPlayer.x, serverPlayer.y, serverPlayer.className);
+          remote.isLocal = false;
+          remote.isRemote = true;
+          remote.networkId = sessionId;
+          this.remotePlayers.set(sessionId, remote);
+          this.partyMembers.push(remote);
+          this.allEntities.add(remote);
+        }
+        remote.updateFromServer(serverPlayer);
+      });
+    });
+  }
+
   getPartyMembers() {
     return this.partyMembers.filter(m => m.hp > 0);
   }
@@ -542,6 +597,30 @@ export class DungeonScene extends Phaser.Scene {
   /**
    * PUBLIC: Get alive enemies
    */
+  applySoftSeparation() {
+    const minDist = 14;
+    const pushForce = 0.8;
+    const allUnits = [...this.getPartyMembers(), ...this.getAliveEnemies()];
+
+    for (let i = 0; i < allUnits.length; i++) {
+      for (let j = i + 1; j < allUnits.length; j++) {
+        const a = allUnits[i];
+        const b = allUnits[j];
+        const dx = b.x - a.x;
+        const dy = (b.groundY || b.y) - (a.groundY || a.y);
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist < minDist && dist > 0) {
+          const overlap = (minDist - dist) * pushForce;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          a.x -= nx * overlap * 0.5;
+          b.x += nx * overlap * 0.5;
+        }
+      }
+    }
+  }
+
   getAliveEnemies() {
     return this.enemies.filter(e => e.hp > 0);
   }
@@ -567,6 +646,9 @@ export class DungeonScene extends Phaser.Scene {
     this.affixManager.update(delta);
     this.projectileSystem.update(delta);
 
+    // Soft separation — gently push overlapping entities apart without hard walls
+    this.applySoftSeparation();
+
     // Depth sort all entities
     sortGroup(this.allEntities);
 
@@ -577,6 +659,11 @@ export class DungeonScene extends Phaser.Scene {
     const scrollX = this.cameras.main.scrollX;
     for (const layer of this.bgLayers) {
       layer.sprite.tilePositionX = scrollX * layer.scrollFactor;
+    }
+
+    // Send input to server in multiplayer
+    if (this.isMultiplayer && this.networkManager) {
+      this.networkManager.sendInput(this.player.getInputState());
     }
 
     // Room boundaries — only clamp the player character, AI follows freely

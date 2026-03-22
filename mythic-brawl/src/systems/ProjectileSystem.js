@@ -26,34 +26,36 @@ export class ProjectileSystem {
     const speedMap = { small: 200, medium: 160, large: 120 };
     const speed = speedMap[size];
 
+    // Don't spawn if texture doesn't exist
+    if (!this.scene.textures.exists(projKey)) return;
+
     const sx = enemy.x + (enemy.facingRight ? 12 : -12);
     const sy = enemy.groundY - 16;
     const tx = target.x;
-    const ty = target.groundY - 12;
+    const ty = (target.groundY || target.y) - 12;
+
+    const dx = tx - sx;
+    const dy = ty - sy;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // Too close — skip ranged, don't spawn a stationary projectile
+    if (dist < 30) return;
+
+    const vx = (dx / dist) * speed;
+    const vy = (dy / dist) * speed;
 
     const proj = this.scene.add.sprite(sx, sy, projKey, 0);
     proj.play(animKey);
     proj.setDepth(GAME_CONFIG.layers.foregroundDecor);
 
-    const dx = tx - sx;
-    const dy = ty - sy;
-    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-    const vx = (dx / dist) * speed;
-    const vy = (dy / dist) * speed;
-
-    const projectile = {
+    this.projectiles.push({
       sprite: proj,
       vx, vy,
       damage: (enemy.power || 0.1) * 10 * 0.7,
-      targetX: tx,
-      targetY: ty,
-      enemy,
-      size,
       traveled: 0,
-      maxDist: dist + 50,
-    };
-
-    this.projectiles.push(projectile);
+      maxDist: Math.max(dist + 50, 200),
+      lifetime: 0,
+    });
   }
 
   update(dt) {
@@ -79,8 +81,11 @@ export class ProjectileSystem {
         }
       }
 
-      // Destroy if hit or traveled too far
-      if (hit || p.traveled > p.maxDist) {
+      // Max lifetime safety — destroy after 3 seconds no matter what
+      p.lifetime += dt;
+
+      // Destroy if hit, traveled too far, or timed out
+      if (hit || p.traveled > p.maxDist || p.lifetime > 3000) {
         p.sprite.destroy();
         this.projectiles.splice(i, 1);
       }

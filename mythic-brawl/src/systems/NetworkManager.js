@@ -1,0 +1,194 @@
+/**
+ * NETWORK MANAGER — Client-side Colyseus networking for co-op multiplayer.
+ *
+ * Handles: connection, room creation/joining, input sending, state sync.
+ * Used by DungeonScene and MainMenuScene when in multiplayer mode.
+ */
+
+import { Client } from 'colyseus.js';
+
+export class NetworkManager {
+  constructor() {
+    this.client = null;
+    this.room = null;
+    this.isConnected = false;
+    this.isHost = false;
+    this.localPlayerId = null;
+    this.serverUrl = 'ws://localhost:2567';
+
+    // Callbacks
+    this._onStateChange = null;
+    this._onPlayerJoin = null;
+    this._onPlayerLeave = null;
+    this._onGameStarted = null;
+    this._onPlayerAbility = null;
+    this._onHostMigrated = null;
+  }
+
+  async connect() {
+    try {
+      this.client = new Client(this.serverUrl);
+      this.isConnected = true;
+      console.log('Connected to multiplayer server');
+      return true;
+    } catch (err) {
+      console.error('Failed to connect to server:', err);
+      this.isConnected = false;
+      return false;
+    }
+  }
+
+  async createRoom(className, dungeon = 'deadmines', keystoneLevel = 2) {
+    if (!this.client) await this.connect();
+
+    try {
+      this.room = await this.client.create('dungeon', {
+        className,
+        dungeon,
+        keystoneLevel,
+      });
+      this.localPlayerId = this.room.sessionId;
+      this.isHost = true;
+      this._setupRoomListeners();
+      console.log(`Created room: ${this.room.state.roomCode}`);
+      return this.room;
+    } catch (err) {
+      console.error('Failed to create room:', err);
+      return null;
+    }
+  }
+
+  async joinRoom(roomCode, className) {
+    if (!this.client) await this.connect();
+
+    try {
+      // Find rooms and join by code
+      const rooms = await this.client.getAvailableRooms('dungeon');
+      const target = rooms.find(r => r.metadata?.roomCode === roomCode);
+
+      if (target) {
+        this.room = await this.client.joinById(target.roomId, { className });
+      } else {
+        // Try joining by room ID directly as fallback
+        this.room = await this.client.join('dungeon', { className, roomCode });
+      }
+
+      this.localPlayerId = this.room.sessionId;
+      this.isHost = false;
+      this._setupRoomListeners();
+      console.log(`Joined room: ${roomCode}`);
+      return this.room;
+    } catch (err) {
+      console.error('Failed to join room:', err);
+      return null;
+    }
+  }
+
+  _setupRoomListeners() {
+    if (!this.room) return;
+
+    this.room.onStateChange((state) => {
+      if (this._onStateChange) this._onStateChange(state);
+    });
+
+    this.room.onMessage('playerJoined', (data) => {
+      if (data.id === this.localPlayerId && data.isHost) {
+        this.isHost = true;
+      }
+      if (this._onPlayerJoin) this._onPlayerJoin(data);
+    });
+
+    this.room.onMessage('playerLeft', (data) => {
+      if (this._onPlayerLeave) this._onPlayerLeave(data);
+    });
+
+    this.room.onMessage('gameStarted', (data) => {
+      if (this._onGameStarted) this._onGameStarted(data);
+    });
+
+    this.room.onMessage('playerAbility', (data) => {
+      if (this._onPlayerAbility) this._onPlayerAbility(data);
+    });
+
+    this.room.onMessage('hostMigrated', (data) => {
+      this.isHost = data.newHostId === this.localPlayerId;
+      if (this._onHostMigrated) this._onHostMigrated(data);
+    });
+
+    this.room.onError((code, message) => {
+      console.error(`Room error [${code}]:`, message);
+    });
+
+    this.room.onLeave((code) => {
+      console.log(`Left room (code: ${code})`);
+      this.room = null;
+    });
+  }
+
+  /**
+   * Send player input state to server each frame.
+   */
+  sendInput(inputState) {
+    if (!this.room) return;
+    this.room.send('input', inputState);
+  }
+
+  /**
+   * Send ability usage to server for broadcast to other clients.
+   */
+  sendAbility(ability, targetX, targetY) {
+    if (!this.room) return;
+    this.room.send('ability', { ability, targetX, targetY });
+  }
+
+  /**
+   * Host starts the game.
+   */
+  startGame() {
+    if (!this.room || !this.isHost) return;
+    this.room.send('startGame');
+  }
+
+  /**
+   * Get the room code for sharing.
+   */
+  getRoomCode() {
+    return this.room?.state?.roomCode || '';
+  }
+
+  /**
+   * Get all player states from server.
+   */
+  getPlayers() {
+    if (!this.room?.state?.players) return new Map();
+    return this.room.state.players;
+  }
+
+  /**
+   * Check if a player ID is the local player.
+   */
+  isLocalPlayer(id) {
+    return id === this.localPlayerId;
+  }
+
+  // --- Callback setters ---
+  onStateChange(cb) { this._onStateChange = cb; }
+  onPlayerJoin(cb) { this._onPlayerJoin = cb; }
+  onPlayerLeave(cb) { this._onPlayerLeave = cb; }
+  onGameStarted(cb) { this._onGameStarted = cb; }
+  onPlayerAbility(cb) { this._onPlayerAbility = cb; }
+  onHostMigrated(cb) { this._onHostMigrated = cb; }
+
+  disconnect() {
+    if (this.room) {
+      this.room.leave();
+      this.room = null;
+    }
+    this.isConnected = false;
+    this.isHost = false;
+    this.localPlayerId = null;
+  }
+}
+
+// Singleton instance
+export const networkManager = new NetworkManager();

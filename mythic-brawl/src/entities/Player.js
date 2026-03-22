@@ -219,6 +219,7 @@ export class Player extends Phaser.GameObjects.Container {
           });
         },
         update(dt) {
+          this.handleMovementInput(dt);
           this.attackFrame++;
 
           // Priest ranged beam attack — fires at mid-animation instead of melee hitbox
@@ -307,7 +308,7 @@ export class Player extends Phaser.GameObjects.Container {
             this.fsm.transition('idle');
           });
         },
-        update(dt) {},
+        update(dt) { this.handleMovementInput(dt); },
         transitions: { idle: 'idle', hitstun: 'hitstun', death: 'death' },
       },
 
@@ -334,7 +335,7 @@ export class Player extends Phaser.GameObjects.Container {
             this.fsm.transition('idle');
           });
         },
-        update(dt) {},
+        update(dt) { this.handleMovementInput(dt); },
         transitions: { idle: 'idle', hitstun: 'hitstun', death: 'death' },
       },
 

@@ -277,7 +277,13 @@ export class DungeonScene extends Phaser.Scene {
     // Boss arena — special wide room with custom environment
     if (roomDef.type === 'bossArena') {
       this.createBossArena(roomDef);
-      this.roomLocked = true;
+      // If bossArena has no enemies, it's a victory room
+      if (!roomDef.enemies && !roomDef.boss) {
+        this.roomLocked = false;
+        this.time.delayedCall(1500, () => this.completeDungeon());
+      } else {
+        this.roomLocked = true;
+      }
       return;
     }
 
@@ -463,6 +469,17 @@ export class DungeonScene extends Phaser.Scene {
       this.currentRoomIndex++;
       this.goIndicator.setVisible(false);
 
+      // Teleport AI companions that are too far behind
+      for (const member of this.partyMembers) {
+        if (member !== this.player && member.hp > 0) {
+          if (member.x < this.player.x - 80) {
+            member.x = this.player.x - 30;
+            member.groundY = this.player.groundY;
+            member.y = member.groundY;
+          }
+        }
+      }
+
       if (this.currentRoomIndex < dungeon.rooms.length) {
         this.spawnRoom(dungeon.rooms[this.currentRoomIndex]);
       }
@@ -558,8 +575,13 @@ export class DungeonScene extends Phaser.Scene {
       layer.sprite.tilePositionX = scrollX * layer.scrollFactor;
     }
 
-    // Room boundaries — clamp player to current room
+    // Room boundaries — clamp player and AI companions to current room
     this.player.x = Phaser.Math.Clamp(this.player.x, this.roomLeftBound + 16, this.roomRightBound - 16);
+    for (const member of this.partyMembers) {
+      if (member !== this.player && member.hp > 0) {
+        member.x = Phaser.Math.Clamp(member.x, this.roomLeftBound - 20, this.roomRightBound + 20);
+      }
+    }
 
     // Check if player walked into next room
     this.checkRoomTransition();

@@ -84,9 +84,11 @@ export class AICompanion extends Phaser.GameObjects.Container {
     this.hpBarFill = scene.add.image(-15, -this.sprite.height - 4, 'hp_bar_fill').setOrigin(0, 0.5);
     this.add(this.hpBarFill);
 
-    // Physics
+    // Physics (body used for hitbox overlap detection only — no auto-collisions)
     scene.physics.add.existing(this);
     this.body.setSize(16, 8).setOffset(-8, -4);
+    this.body.pushable = false;
+    this.body.immovable = true;
 
     // State machine (simplified from Player — no input handling)
     this.fsm = new StateMachine(this, {
@@ -112,15 +114,15 @@ export class AICompanion extends Phaser.GameObjects.Container {
           const atkNum = (this.aiAttackIndex % combo.length) + 1;
           this.aiAttackIndex++;
 
-          // Pick a random special to use occasionally (30% chance)
+          // Use first available special off cooldown (prioritize specials over basic attacks)
           const specials = this.classData.specials ? Object.keys(this.classData.specials) : [];
           let useSpecial = null;
-          if (specials.length > 0 && Math.random() < 0.3) {
-            const spKey = specials[Phaser.Math.Between(0, specials.length - 1)];
+          for (const spKey of specials) {
             const sp = this.classData.specials[spKey];
             if (this.cooldowns[spKey] <= 0) {
               useSpecial = { key: spKey, data: sp };
               this.cooldowns[spKey] = sp.cooldown;
+              break;
             }
           }
 

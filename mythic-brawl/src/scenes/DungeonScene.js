@@ -20,6 +20,7 @@
 import Phaser from 'phaser';
 import { Player } from '../entities/Player.js';
 import { Enemy } from '../entities/Enemy.js';
+import { GhostEnemy } from '../entities/GhostEnemy.js';
 import { AICompanion } from '../entities/AICompanion.js';
 import { CombatSystem } from '../systems/CombatSystem.js';
 import { VFXSystem } from '../systems/VFXSystem.js';
@@ -40,11 +41,18 @@ export class DungeonScene extends Phaser.Scene {
     this.keystoneLevel = data.keystoneLevel || 2;
     this.isMultiplayer = data.multiplayer || false;
     this.isHost = data.isHost || false;
-    this.remotePlayers = new Map(); // sessionId -> Player instance
+    this.remotePlayers = new Map();  // sessionId -> Player instance
+    this.ghostEnemies = new Map();   // networkId -> GhostEnemy (non-host only)
+    this.enemySyncTimer = 0;
+    this.enemySyncInterval = 50;     // Host broadcasts enemy state every ~50ms
+    this.nextEnemyId = 0;
   }
 
   create() {
     const dungeon = DUNGEONS[this.dungeonKey];
+
+    // Seeded random for deterministic backgrounds across clients
+    this.seededRandom = this.createSeededRandom(this.dungeonKey);
 
     // Entity tracking
     this.partyMembers = [];
@@ -56,25 +64,31 @@ export class DungeonScene extends Phaser.Scene {
     this.dungeonComplete = false;
     this.events.on('playerAttack', () => { this.combatStarted = true; });
 
-    // Background (placeholder — solid color with ground line)
+    // Background — uses seeded random so all clients see identical layout
     this.createBackground();
 
-    // Systems
-    this.combatSystem = new CombatSystem(this);
+    // Host or solo runs full simulation; non-host renders ghosts
+    const runFullSim = !this.isMultiplayer || this.isHost;
+
+    // Systems — combat/AI only on host or solo
+    this.combatSystem = runFullSim ? new CombatSystem(this) : null;
     this.vfxSystem = new VFXSystem(this);
-    this.projectileSystem = new ProjectileSystem(this, this.dungeonKey);
-    this.affixManager = new AffixManager(this, this.keystoneLevel);
+    this.projectileSystem = runFullSim ? new ProjectileSystem(this, this.dungeonKey) : null;
+    this.affixManager = runFullSim ? new AffixManager(this, this.keystoneLevel) : {
+      update() {}, applySpawnModifiers() {}, getActiveAffixNames() { return []; },
+      getActiveAffixKeys() { return []; }, destroy() {},
+    };
     this.dungeonTimer = new DungeonTimer(this, dungeon.timeLimit);
 
-    // Create player
+    // Create local player
     this.player = new Player(this, 40, 200, this.playerClass);
     this.partyMembers.push(this.player);
     this.allEntities.add(this.player);
 
-    // Create party — AI companions in solo, remote players in multiplayer
     if (this.isMultiplayer) {
       this.setupMultiplayer();
     } else {
+      // AI companions (solo only)
       const allClasses = ['warrior', 'priest', 'rogue'];
       const aiClasses = allClasses.filter(c => c !== this.playerClass);
       aiClasses.forEach((cls, i) => {
@@ -85,17 +99,9 @@ export class DungeonScene extends Phaser.Scene {
       });
     }
 
-    // Physics collision groups — prevent walk-through
-    this.partyGroup = this.physics.add.group();
-    this.enemyGroup = this.physics.add.group();
-
-    // Add existing party members to physics group
-    for (const member of this.partyMembers) {
-      this.partyGroup.add(member);
-    }
-
-    // Soft push between entities — no hard physics colliders that create invisible walls
-    // Instead, apply gentle separation force in update loop
+    // Entity tracking groups (non-physics — hitbox detection is manual in CombatSystem)
+    this.partyGroup = [];
+    this.enemyGroup = [];
 
     // Tab targeting
     this.tabTargetIndex = -1;
@@ -108,22 +114,23 @@ export class DungeonScene extends Phaser.Scene {
     this.roomLocked = false;
     this.roomCleared = false;
     this.roomLeftBound = 0;
-    this.roomRightBound = 480;  // First room is one screen wide
+    this.roomRightBound = 480;
 
-    // "GO →" indicator (hidden until room is cleared)
     this.goIndicator = this.add.text(0, 0, 'GO →', {
       fontSize: '14px', fontFamily: 'monospace', color: '#44ff44',
       stroke: '#000000', strokeThickness: 3,
     }).setOrigin(0.5).setResolution(4).setDepth(GAME_CONFIG.layers.ui).setVisible(false);
 
-    // Spawn first room's enemies
-    this.spawnRoom(dungeon.rooms[0]);
+    // Only host/solo spawns real enemies — non-host gets ghosts from server
+    if (runFullSim) {
+      this.spawnRoom(dungeon.rooms[0]);
+    }
 
     // Camera
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.cameras.main.setBounds(0, 0, this.worldWidth, GAME_CONFIG.height);
 
-    // Start UI scene in parallel
+    // Start UI scene
     this.scene.launch('UIScene', {
       dungeonTimer: this.dungeonTimer,
       affixManager: this.affixManager,
@@ -133,11 +140,29 @@ export class DungeonScene extends Phaser.Scene {
       dungeonName: dungeon.name,
     });
 
-    // Start timer
     this.dungeonTimer.start();
 
-    // Listen for room clear
-    this.events.on('enemyDeath', this.checkRoomClear, this);
+    // Room clear — host/solo only
+    if (runFullSim) {
+      this.events.on('enemyDeath', this.checkRoomClear, this);
+    }
+  }
+
+  /**
+   * Seeded random number generator for deterministic backgrounds.
+   * Same seed = same tile/prop placement on all clients.
+   */
+  createSeededRandom(seed) {
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) {
+      h = Math.imul(31, h) + seed.charCodeAt(i) | 0;
+    }
+    return () => {
+      h = Math.imul(h ^ (h >>> 16), 0x45d9f3b);
+      h = Math.imul(h ^ (h >>> 13), 0x45d9f3b);
+      h = (h ^ (h >>> 16)) >>> 0;
+      return h / 4294967296;
+    };
   }
 
   createBackground() {
@@ -185,15 +210,16 @@ export class DungeonScene extends Phaser.Scene {
     const waterFrames = env.waterTileRows || null;
     const waterChance = env.waterChance || 0;
 
+    const rng = this.seededRandom;
     for (let x = 0; x < cols; x++) {
       for (let y = 0; y < rows; y++) {
         let frame;
-        if (waterFrames && Math.random() < waterChance) {
-          frame = waterFrames[Phaser.Math.Between(0, waterFrames.length - 1)];
+        if (waterFrames && rng() < waterChance) {
+          frame = waterFrames[Math.floor(rng() * waterFrames.length)];
         } else {
-          frame = Math.random() < 0.75
+          frame = rng() < 0.75
             ? tileFrames[0]
-            : tileFrames[Phaser.Math.Between(1, tileFrames.length - 1)];
+            : tileFrames[1 + Math.floor(rng() * (tileFrames.length - 1))];
         }
         groundRT.drawFrame(env.tileSheet, frame, x * tileSize, y * tileSize);
       }
@@ -227,21 +253,23 @@ export class DungeonScene extends Phaser.Scene {
     const wallProps = env.wallProps || [];
     const floorProps = env.floorProps || [];
     const transitionProp = env.transitionProp;
+    const rng = this.seededRandom;
+    const rngBetween = (min, max) => min + Math.floor(rng() * (max - min + 1));
 
     // Wall props — spaced along the back wall
-    for (let x = 60; x < this.worldWidth - 60; x += Phaser.Math.Between(70, 120)) {
-      const frame = wallProps[Phaser.Math.Between(0, wallProps.length - 1)];
+    for (let x = 60; x < this.worldWidth - 60; x += rngBetween(70, 120)) {
+      const frame = wallProps[Math.floor(rng() * wallProps.length)];
       const prop = this.add.image(x, GAME_CONFIG.groundMinY, propSheet, frame);
       prop.setOrigin(0.5, 1);
       prop.setDepth(GAME_CONFIG.layers.groundDecor);
     }
 
     // Floor props — scattered across the walkable area
-    for (let x = 100; x < this.worldWidth - 60; x += Phaser.Math.Between(90, 200)) {
-      const frame = floorProps[Phaser.Math.Between(0, floorProps.length - 1)];
-      const propY = Phaser.Math.Between(GAME_CONFIG.groundMinY + 15, GAME_CONFIG.groundMaxY - 10);
+    for (let x = 100; x < this.worldWidth - 60; x += rngBetween(90, 200)) {
+      const frame = floorProps[Math.floor(rng() * floorProps.length)];
+      const propY = rngBetween(GAME_CONFIG.groundMinY + 15, GAME_CONFIG.groundMaxY - 10);
       const prop = this.add.image(
-        x + Phaser.Math.Between(-20, 20),
+        x + rngBetween(-20, 20),
         propY,
         propSheet,
         frame
@@ -297,14 +325,16 @@ export class DungeonScene extends Phaser.Scene {
     const spawnCenter = roomStartX + roomWidth * 0.65;
 
     if (roomDef.enemies) {
+      const rng = this.seededRandom;
       roomDef.enemies.forEach((enemyKey, i) => {
-        const ex = spawnCenter + (i - roomDef.enemies.length / 2) * 25 + Math.random() * 15;
-        const ey = GAME_CONFIG.groundMinY + 10 + Math.random() * (GAME_CONFIG.groundMaxY - GAME_CONFIG.groundMinY - 20);
+        const ex = spawnCenter + (i - roomDef.enemies.length / 2) * 25 + rng() * 15;
+        const ey = GAME_CONFIG.groundMinY + 10 + rng() * (GAME_CONFIG.groundMaxY - GAME_CONFIG.groundMinY - 20);
         const enemy = new Enemy(this, ex, ey, enemyKey, this.keystoneLevel);
+        enemy.networkId = `e_${this.currentRoomIndex}_${this.nextEnemyId++}`;
         this.affixManager.applySpawnModifiers(enemy);
         this.enemies.push(enemy);
         this.allEntities.add(enemy);
-        this.enemyGroup.add(enemy);
+        this.enemyGroup.push(enemy);
       });
     }
 
@@ -312,14 +342,25 @@ export class DungeonScene extends Phaser.Scene {
       const bx = spawnCenter + 40;
       const by = (GAME_CONFIG.groundMinY + GAME_CONFIG.groundMaxY) / 2;
       const boss = new Enemy(this, bx, by, roomDef.boss, this.keystoneLevel);
+      boss.networkId = `e_${this.currentRoomIndex}_${this.nextEnemyId++}`;
       this.affixManager.applySpawnModifiers(boss);
       this.enemies.push(boss);
       this.allEntities.add(boss);
-      this.enemyGroup.add(boss);
+      this.enemyGroup.push(boss);
     }
 
     // Lock room — player can't leave until enemies are dead
     this.roomLocked = true;
+
+    // Host: notify server of enemy spawn so non-host clients create ghosts
+    if (this.isMultiplayer && this.isHost && this.networkManager) {
+      const spawnData = this.enemies.filter(e => e.hp > 0).map(e => ({
+        id: e.networkId, type: e.enemyKey,
+        x: e.x, y: e.y, groundY: e.groundY,
+        hp: e.hp, maxHp: e.maxHp,
+      }));
+      this.networkManager.sendEnemySpawn(spawnData);
+    }
   }
 
   /**
@@ -368,18 +409,15 @@ export class DungeonScene extends Phaser.Scene {
         const dist = Math.sqrt((px - cx) ** 2 + ((py - cy) * 2) ** 2); // Squash Y for 2.5D
 
         let frame;
+        const rng = this.seededRandom;
         if (dist > radiusOuter) {
-          // Arena edge boundary
-          frame = env.arenaEdge[Phaser.Math.Between(0, env.arenaEdge.length - 1)];
+          frame = env.arenaEdge[Math.floor(rng() * env.arenaEdge.length)];
         } else if (dist > radiusMid) {
-          // Blood-stained stone outer ring
-          frame = env.floorEdge[Phaser.Math.Between(0, env.floorEdge.length - 1)];
+          frame = env.floorEdge[Math.floor(rng() * env.floorEdge.length)];
         } else if (dist > radiusInner) {
-          // Blood channels radiating outward
-          frame = env.floorRadial[Phaser.Math.Between(0, env.floorRadial.length - 1)];
+          frame = env.floorRadial[Math.floor(rng() * env.floorRadial.length)];
         } else {
-          // Fire grate center
-          frame = env.floorCenter[Phaser.Math.Between(0, env.floorCenter.length - 1)];
+          frame = env.floorCenter[Math.floor(rng() * env.floorCenter.length)];
         }
         arenaRT.drawFrame(env.tileSheet, frame, tx * tileSize, ty * tileSize);
       }
@@ -435,8 +473,8 @@ export class DungeonScene extends Phaser.Scene {
   }
 
   checkRoomClear(deadEnemy) {
-    // Remove from tracked enemies
-    this.enemies = this.enemies.filter(e => e !== deadEnemy && e.hp > 0);
+    // Remove dead/destroyed enemies from tracked list
+    this.enemies = this.enemies.filter(e => e !== deadEnemy && e.hp > 0 && !e.dead);
 
     if (this.enemies.length === 0 && this.roomLocked) {
       this.roomLocked = false;
@@ -444,12 +482,13 @@ export class DungeonScene extends Phaser.Scene {
 
       const dungeon = DUNGEONS[this.dungeonKey];
       if (this.currentRoomIndex < dungeon.rooms.length - 1) {
-        // Show GO indicator — player needs to walk right to proceed
         this.goIndicator.setVisible(true);
-        // Unlock right boundary so player can walk forward
         this.roomRightBound = this.worldWidth;
+        // Host: notify non-host clients that room is cleared
+        if (this.isMultiplayer && this.isHost && this.networkManager) {
+          this.networkManager.sendRoomCleared(this.currentRoomIndex);
+        }
       } else {
-        // Last room — dungeon complete after brief pause
         this.time.delayedCall(1500, () => this.completeDungeon());
       }
     }
@@ -488,6 +527,10 @@ export class DungeonScene extends Phaser.Scene {
 
       if (this.currentRoomIndex < dungeon.rooms.length) {
         this.spawnRoom(dungeon.rooms[this.currentRoomIndex]);
+        // Host: notify server of room advance
+        if (this.isMultiplayer && this.isHost && this.networkManager) {
+          this.networkManager.sendRoomAdvance(this.currentRoomIndex);
+        }
       }
     }
   }
@@ -498,6 +541,11 @@ export class DungeonScene extends Phaser.Scene {
     this.dungeonTimer.complete();
     const upgrade = this.dungeonTimer.getKeyUpgrade();
     this.goIndicator.setVisible(false);
+
+    // Host: notify non-host clients
+    if (this.isMultiplayer && this.isHost && this.networkManager) {
+      this.networkManager.sendDungeonComplete({ upgrade });
+    }
 
     // Victory overlay
     const { width, height } = this.cameras.main;
@@ -542,58 +590,216 @@ export class DungeonScene extends Phaser.Scene {
    * PUBLIC: Get alive party members (player + AI companions)
    */
   async setupMultiplayer() {
-    const { networkManager } = await import('../systems/NetworkManager.js');
-    this.networkManager = networkManager;
+    try {
+      const { networkManager } = await import('../systems/NetworkManager.js');
+      this.networkManager = networkManager;
 
-    // When a new player is added to server state
-    networkManager.room.state.players.onAdd((player, sessionId) => {
-      if (networkManager.isLocalPlayer(sessionId)) return;
+      if (!networkManager.room) {
+        console.error('No room connection in setupMultiplayer');
+        return;
+      }
 
-      const remotePlayer = new Player(this, player.x, player.y, player.className);
-      remotePlayer.isLocal = false;
-      remotePlayer.isRemote = true;
-      remotePlayer.networkId = sessionId;
-      this.remotePlayers.set(sessionId, remotePlayer);
-      this.partyMembers.push(remotePlayer);
-      this.allEntities.add(remotePlayer);
-      this.partyGroup.add(remotePlayer);
-      console.log(`Remote player joined: ${sessionId} as ${player.className}`);
+      // Wait for state to be available
+      if (!networkManager.room.state || !networkManager.room.state.players) {
+        await new Promise((resolve) => {
+          const unsub = networkManager.room.onStateChange(() => {
+            unsub();
+            resolve();
+          });
+        });
+      }
 
-      // Listen for changes to this player's properties
-      player.onChange(() => {
-        const remote = this.remotePlayers.get(sessionId);
-        if (remote) {
-          remote.x = player.x;
-          remote.y = player.y;
-          remote.groundY = player.groundY;
-          if (player.facingRight !== undefined) {
-            remote.sprite.setFlipX(!player.facingRight);
-            remote.facingRight = player.facingRight;
-          }
-          if (player.state === 'walk' && remote.sprite.anims.currentAnim?.key !== `${remote.classKey}_walk`) {
-            remote.sprite.play(`${remote.classKey}_walk`, true);
-          } else if (player.state === 'idle' && remote.sprite.anims.currentAnim?.key !== `${remote.classKey}_idle`) {
-            remote.sprite.play(`${remote.classKey}_idle`, true);
-          }
+      console.log('Multiplayer state ready, setting up listeners');
+
+      // Track known player/enemy IDs to detect additions/removals
+      this._knownPlayerIds = new Set();
+      this._knownEnemyIds = new Set();
+
+      // Use onStateChange to sync players and enemies (works in all Colyseus versions)
+      networkManager.room.onStateChange((state) => {
+        if (!state) return;
+
+        // ─── SYNC REMOTE PLAYERS ───
+        if (state.players) {
+          const currentIds = new Set();
+          state.players.forEach((player, sessionId) => {
+            currentIds.add(sessionId);
+            if (networkManager.isLocalPlayer(sessionId)) return;
+
+            let remote = this.remotePlayers.get(sessionId);
+            if (!remote) {
+              // New player — spawn remote
+              try {
+                remote = new Player(this, player.x || 40, player.y || 200, player.className || 'warrior');
+                remote.isLocal = false;
+                remote.isRemote = true;
+                remote.networkId = sessionId;
+                this.remotePlayers.set(sessionId, remote);
+                this.partyMembers.push(remote);
+                this.allEntities.add(remote);
+                console.log(`Remote player spawned: ${sessionId} as ${player.className}`);
+              } catch (e) {
+                console.error('Error spawning remote player:', e);
+              }
+            }
+
+            // Update remote player position/state
+            if (remote && remote.sprite) {
+              try {
+                remote.x = player.x;
+                remote.groundY = player.groundY;
+                remote.y = remote.groundY;
+                remote.facingRight = player.facingRight;
+                remote.sprite.setFlipX(!player.facingRight);
+                if (player.state === 'walk' && !remote.sprite.anims.currentAnim?.key?.includes('walk')) {
+                  remote.sprite.play(`${remote.classKey}_walk`, true);
+                } else if (player.state === 'idle' && !remote.sprite.anims.currentAnim?.key?.includes('idle')) {
+                  remote.sprite.play(`${remote.classKey}_idle`, true);
+                }
+              } catch (e) {}
+            }
+          });
+
+          // Remove players that left
+          this.remotePlayers.forEach((remote, sessionId) => {
+            if (!currentIds.has(sessionId)) {
+              this.partyMembers = this.partyMembers.filter(m => m !== remote);
+              try { remote.destroy(); } catch (e) {}
+              this.remotePlayers.delete(sessionId);
+              console.log(`Remote player removed: ${sessionId}`);
+            }
+          });
+        }
+
+        // ─── SYNC GHOST ENEMIES (non-host only) ───
+        if (!networkManager.isHost && state.enemies) {
+          const currentEnemyIds = new Set();
+          state.enemies.forEach((enemyState, key) => {
+            currentEnemyIds.add(key);
+
+            let ghost = this.ghostEnemies.get(key);
+            if (!ghost) {
+              // New enemy — spawn ghost
+              try {
+                ghost = new GhostEnemy(this, enemyState.x, enemyState.groundY, enemyState.type);
+                ghost.networkId = key;
+                ghost.hp = enemyState.hp;
+                ghost.maxHp = enemyState.maxHp;
+                this.ghostEnemies.set(key, ghost);
+                this.allEntities.add(ghost);
+                console.log(`Ghost enemy spawned: ${key} (${enemyState.type})`);
+              } catch (e) {
+                console.error('Error spawning ghost enemy:', e);
+              }
+            }
+
+            // Update ghost from server state
+            if (ghost) ghost.updateFromServer(enemyState);
+          });
+
+          // Remove ghosts for enemies that died
+          this.ghostEnemies.forEach((ghost, key) => {
+            if (!currentEnemyIds.has(key)) {
+              try { ghost.sprite.play(`${ghost.enemyKey}_death`, true); } catch(e) {}
+              this.time.delayedCall(800, () => {
+                try { ghost.destroy(); } catch(e) {}
+              });
+              this.ghostEnemies.delete(key);
+            }
+          });
         }
       });
-    });
 
-    // When a player is removed from server state
-    networkManager.room.state.players.onRemove((player, sessionId) => {
-      const remote = this.remotePlayers.get(sessionId);
-      if (remote) {
-        this.partyMembers = this.partyMembers.filter(m => m !== remote);
-        remote.destroy();
-        this.remotePlayers.delete(sessionId);
-        console.log(`Remote player left: ${sessionId}`);
+      // ─── NON-HOST: intercept attacks and route damage to host ───
+      if (!networkManager.isHost) {
+        this.events.on('hitboxActive', (hitbox) => {
+          if (hitbox._netChecked) return;
+          hitbox._netChecked = true;
+          const ghosts = [...this.ghostEnemies.values()];
+          for (const ghost of ghosts) {
+            if (ghost.hp <= 0) continue;
+            const ex = ghost.x - 8;
+            const ey = ghost.groundY - 16;
+            if (hitbox.x < ex + 16 && hitbox.x + hitbox.width > ex &&
+                hitbox.y < ey + 16 && hitbox.y + hitbox.height > ey) {
+              if (!hitbox._hitEntities) hitbox._hitEntities = new Set();
+              if (hitbox._hitEntities.has(ghost)) continue;
+              hitbox._hitEntities.add(ghost);
+              const dir = { x: (ghost.x - hitbox.owner.x) / 30, y: 0 };
+              networkManager.sendEnemyDamage(
+                ghost.networkId, hitbox.damage,
+                dir.x * hitbox.knockback, dir.y * hitbox.knockback,
+                hitbox.hitstun
+              );
+            }
+          }
+        });
+
+        // Non-host: intercept specials and route damage to host
+        this.events.on('playerSpecial', (data) => {
+          const { player, special } = data;
+          if (!special.damage) return;
+          const ghosts = [...this.ghostEnemies.values()];
+          for (const ghost of ghosts) {
+            if (ghost.hp <= 0) continue;
+            const dist = Phaser.Math.Distance.Between(player.x, player.groundY, ghost.x, ghost.groundY);
+            if (dist <= (special.range || 40)) {
+              networkManager.sendEnemyDamage(
+                ghost.networkId, special.damage * player.power * 10,
+                0, 0, special.stun || 300
+              );
+            }
+          }
+        });
+
+        // Non-host: room cleared notification from host
+        networkManager.onRoomCleared((data) => {
+          this.roomLocked = false;
+          this.roomCleared = true;
+          this.goIndicator.setVisible(true);
+          this.roomRightBound = this.worldWidth;
+        });
+
+        // Non-host: dungeon complete from host
+        networkManager.onDungeonComplete(() => {
+          this.completeDungeon();
+        });
       }
-    });
 
-    // Listen for game start message
-    networkManager.onGameStarted((data) => {
-      console.log('Game started from server');
-    });
+      // ─── HOST: receive damage from non-host clients ───
+      if (networkManager.isHost) {
+        networkManager.onEnemyDamageRequest((data) => {
+          const enemy = this.enemies.find(e => e.networkId === data.enemyId && e.hp > 0);
+          if (enemy) {
+            enemy.takeDamage(data.damage, { x: data.knockbackX || 0, y: data.knockbackY || 0 }, data.hitstun || 200);
+          }
+        });
+      }
+
+      // Spawn any players already in the room state (joined before our listeners)
+      if (networkManager.room?.state?.players) {
+        networkManager.room.state.players.forEach((player, sessionId) => {
+          if (networkManager.isLocalPlayer(sessionId)) return;
+          if (this.remotePlayers.has(sessionId)) return;
+
+          try {
+            const remotePlayer = new Player(this, player.x || 40, player.y || 200, player.className || 'warrior');
+            remotePlayer.isLocal = false;
+            remotePlayer.isRemote = true;
+            remotePlayer.networkId = sessionId;
+            this.remotePlayers.set(sessionId, remotePlayer);
+            this.partyMembers.push(remotePlayer);
+            this.allEntities.add(remotePlayer);
+            console.log(`Remote player already in room: ${sessionId} as ${player.className}`);
+          } catch (e) {
+            console.error('Error spawning existing remote player:', e);
+          }
+        });
+      }
+
+    } catch (err) {
+      console.error('setupMultiplayer failed:', err);
+    }
   }
 
   getPartyMembers() {
@@ -620,74 +826,125 @@ export class DungeonScene extends Phaser.Scene {
           const overlap = (minDist - dist) * pushForce;
           const nx = dx / dist;
           const ny = dy / dist;
-          a.x -= nx * overlap * 0.5;
-          b.x += nx * overlap * 0.5;
+
+          // Never push the local player — only push AI/enemies away from them
+          const aIsPlayer = a === this.player;
+          const bIsPlayer = b === this.player;
+          if (aIsPlayer) {
+            b.x += nx * overlap;
+          } else if (bIsPlayer) {
+            a.x -= nx * overlap;
+          } else {
+            a.x -= nx * overlap * 0.5;
+            b.x += nx * overlap * 0.5;
+          }
         }
       }
     }
   }
 
   getAliveEnemies() {
-    return this.enemies.filter(e => e.hp > 0);
+    // Non-host clients return ghost enemies for targeting
+    if (this.isMultiplayer && !this.isHost) {
+      return [...this.ghostEnemies.values()].filter(g => g.hp > 0);
+    }
+    return this.enemies.filter(e => e.hp > 0 && !e.dead);
   }
 
   update(time, delta) {
     if (this.dungeonComplete) return;
 
-    // Update all entities
+    const runFullSim = !this.isMultiplayer || this.isHost;
+
+    // Update local player
     this.player.update(time, delta);
+
+    // Update AI companions (solo) or skip remote players
     for (const member of this.partyMembers) {
-      if (member !== this.player && member.hp > 0) {
+      if (member !== this.player && member.hp > 0 && !member.isRemote) {
         member.update(time, delta);
       }
     }
-    for (const enemy of this.enemies) {
-      if (enemy.hp > 0) {
-        enemy.update(time, delta);
+
+    // Enemies: host/solo runs full AI, non-host updates ghost interpolation
+    if (runFullSim) {
+      for (const enemy of this.enemies) {
+        if (enemy.hp > 0 && !enemy.dead) enemy.update(time, delta);
       }
+    } else {
+      this.ghostEnemies.forEach((ghost) => ghost.update(time, delta));
     }
 
-    // Systems
-    if (this.isMultiplayer && this.networkManager?.room?.state) {
+    // Timer: non-host syncs from server, host/solo runs locally
+    if (this.isMultiplayer && !this.isHost && this.networkManager?.room?.state) {
       this.dungeonTimer.setTime(this.networkManager.room.state.timer);
     } else {
       this.dungeonTimer.update(delta);
     }
-    this.affixManager.update(delta);
-    this.projectileSystem.update(delta);
+    if (runFullSim) {
+      if (this.affixManager?.update) this.affixManager.update(delta);
+      if (this.projectileSystem?.update) this.projectileSystem.update(delta);
+    }
 
-    // Soft separation — gently push overlapping entities apart without hard walls
-    this.applySoftSeparation();
+    // Soft separation (host/solo only — non-host has no real enemies)
+    if (runFullSim) this.applySoftSeparation();
 
-    // Depth sort all entities
-    sortGroup(this.allEntities);
-
-    // Tab targeting — cycle and render indicator
+    // Tab targeting (all modes — non-host targets ghosts)
     this.updateTabTarget();
 
-    // Parallax background layers — each scrolls at its own rate
-    const scrollX = this.cameras.main.scrollX;
-    for (const layer of this.bgLayers) {
-      layer.sprite.tilePositionX = scrollX * layer.scrollFactor;
+    // Room boundaries + transitions (host/solo only)
+    if (runFullSim) {
+      this.player.x = Phaser.Math.Clamp(this.player.x, this.roomLeftBound + 16, this.roomRightBound - 16);
+      this.checkRoomTransition();
     }
 
-    // Send input to server in multiplayer
-    if (this.isMultiplayer && this.networkManager) {
-      this.networkManager.sendInput(this.player.getInputState());
-    }
-
-    // Room boundaries — only clamp the player character, AI follows freely
-    this.player.x = Phaser.Math.Clamp(this.player.x, this.roomLeftBound + 16, this.roomRightBound - 16);
-
-    // Check if player walked into next room
-    this.checkRoomTransition();
-
-    // Animate GO indicator (flashing + positioned at right edge of screen)
+    // GO indicator
     if (this.goIndicator.visible) {
       const screenRight = this.cameras.main.scrollX + GAME_CONFIG.width - 30;
       const screenMidY = GAME_CONFIG.height / 2;
       this.goIndicator.setPosition(screenRight, screenMidY);
       this.goIndicator.setAlpha(0.6 + Math.sin(time * 0.006) * 0.4);
+    }
+
+    // ─── MULTIPLAYER SYNC ───
+    if (this.isMultiplayer && this.networkManager) {
+      // All clients: send local input to server
+      this.networkManager.sendInput(this.player.getInputState());
+
+      // All clients: update remote player visuals
+      this.remotePlayers.forEach((remote) => {
+        if (remote.hp > 0) {
+          remote.updateHpBar();
+          remote.y = remote.groundY - (remote.jumpZ || 0);
+          remote.setDepth(GAME_CONFIG.layers.entities + remote.groundY);
+        }
+      });
+
+      // Host: broadcast enemy state periodically
+      if (this.isHost) {
+        this.enemySyncTimer += delta;
+        if (this.enemySyncTimer >= this.enemySyncInterval) {
+          this.enemySyncTimer = 0;
+          const syncData = this.enemies.filter(e => e.hp > 0).map(e => ({
+            id: e.networkId, type: e.enemyKey,
+            x: Math.round(e.x), y: Math.round(e.y),
+            groundY: Math.round(e.groundY),
+            hp: e.hp, maxHp: e.maxHp,
+            state: e.fsm?.currentStateName || 'idle',
+            facingRight: e.facingRight,
+          }));
+          this.networkManager.sendEnemySync(syncData);
+        }
+      }
+    }
+
+    // Depth sort (all modes)
+    sortGroup(this.allEntities);
+
+    // Parallax (all modes)
+    const scrollX = this.cameras.main.scrollX;
+    for (const layer of this.bgLayers) {
+      layer.sprite.tilePositionX = scrollX * layer.scrollFactor;
     }
   }
 
@@ -750,5 +1007,21 @@ export class DungeonScene extends Phaser.Scene {
 
     this.tabTargetIndex = (this.tabTargetIndex + 1) % alive.length;
     this.tabTarget = alive[this.tabTargetIndex];
+  }
+
+  /**
+   * Clean up network listeners and resources when scene shuts down.
+   */
+  shutdown() {
+    if (this.isMultiplayer && this.networkManager) {
+      // Clear singleton callbacks so they don't reference this destroyed scene
+      this.networkManager.onStateChange(null);
+      this.networkManager.onPlayerJoin(null);
+      this.networkManager.onPlayerLeave(null);
+      this.networkManager.onGameStarted(null);
+      this.networkManager.onPlayerAbility(null);
+      this.networkManager.onHostMigrated(null);
+    }
+    this.remotePlayers?.clear();
   }
 }

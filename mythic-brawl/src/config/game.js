@@ -29,7 +29,7 @@ export const GAME_CONFIG = {
 
   // Physics
   hitStopFrames: 3,      // Freeze frames on hit for impact feel
-  knockbackDecay: 0.85,  // Knockback velocity multiplier per frame
+  knockbackDecay: 0.92,  // Knockback velocity multiplier per frame (higher = slides further)
 };
 
 /**
@@ -62,14 +62,15 @@ export const CLASSES = {
         description: 'Huge horizontal slash. Applies bleed to all enemies hit.',
       },
       special2: {
-        name: 'Shield Bash',
-        key: 'warrior_shieldbash',
-        cooldown: 5000,
-        damage: 1.5,
-        knockback: 6.0,
-        stun: true,
-        stunDuration: 4000,
-        description: 'Stuns enemies for 1.5s. Stunned enemies take double damage.',
+        name: 'Shotgun Blast',
+        key: 'warrior_shotgun',
+        cooldown: 3000,
+        damage: 4.0,
+        knockback: 25,
+        range: 80,
+        spread: 40,
+        pellets: 6,
+        description: 'Fire a devastating shotgun blast. Massive damage and knockback in a cone.',
       },
       special3: {
         name: 'Heroic Leap',
@@ -108,11 +109,6 @@ export const CLASSES = {
         name: 'Taunt Aura',
         description: 'Enemies within range prioritize attacking the Warrior.',
         radius: 60,
-      },
-      block: {
-        name: 'Shield Block',
-        description: 'Hold block to reduce incoming damage by 50%. Cannot attack while blocking.',
-        reduction: 0.5,
       },
     },
   },
@@ -160,6 +156,96 @@ export const CLASSES = {
         name: 'Atonement',
         description: 'Dealing damage heals the lowest HP ally for 15% of damage dealt.',
         healPercent: 0.15,
+      },
+    },
+  },
+
+  mage: {
+    name: 'Mage',
+    role: 'ranged-dps',
+    stats: { hp: 80, speed: 90, power: 6.0, defense: 0.7 },
+    combo: ['mage_atk1', 'mage_atk2', 'mage_atk3'],
+    specials: {
+      special1: {
+        name: 'Arcane Missiles',
+        key: 'mage_missiles',
+        cooldown: 2500,
+        damage: 1.8,
+        missileCount: 5,
+        missileDelay: 120,
+        range: 120,
+        description: 'Rapid-fire 5 homing arcane missiles at the target.',
+      },
+      special2: {
+        name: 'Comet Crash',
+        key: 'mage_comet',
+        cooldown: 6000,
+        damage: 8.0,
+        radius: 50,
+        knockback: 20,
+        description: 'Call a massive comet from the sky. Huge AoE damage and knockback.',
+      },
+      special3: {
+        name: 'Blink',
+        key: 'mage_blink',
+        cooldown: 3000,
+        distance: 80,
+        description: 'Teleport forward instantly, dodging all damage.',
+      },
+      special4: {
+        name: 'Frost Nova',
+        key: 'mage_frostnova',
+        cooldown: 5000,
+        damage: 2.0,
+        radius: 50,
+        stun: true,
+        stunDuration: 2500,
+        description: 'Freeze all nearby enemies in place.',
+      },
+      special5: {
+        name: 'Disintegrate',
+        key: 'mage_disintegrate',
+        cooldown: 4000,
+        damagePerTick: 3.0,
+        tickInterval: 100,
+        range: 140,
+        beamWidth: 8,
+        description: 'Channel a devastating plasma beam. Hold to continue.',
+      },
+      special6: {
+        name: 'Meteor Storm',
+        key: 'mage_meteorstorm',
+        cooldown: 8000,
+        damagePerMeteor: 3.5,
+        meteorCount: 8,
+        meteorDelay: 200,
+        radius: 60,
+        description: 'Rain meteors across the battlefield.',
+      },
+      special7: {
+        name: 'Chain Lightning',
+        key: 'mage_chainlightning',
+        cooldown: 4000,
+        damage: 3.5,
+        bounces: 5,
+        range: 100,
+        description: 'Lightning arcs between up to 5 enemies.',
+      },
+      special8: {
+        name: 'Time Warp',
+        key: 'mage_timewarp',
+        cooldown: 10000,
+        slowPercent: 0.4,
+        duration: 4000,
+        radius: 80,
+        description: 'Slow all enemies to 40% speed for 4 seconds.',
+      },
+    },
+    passives: {
+      arcanePower: {
+        name: 'Arcane Power',
+        description: 'Spells deal 15% bonus damage to stunned enemies.',
+        bonusDamage: 0.15,
       },
     },
   },
@@ -222,66 +308,87 @@ export const ATTACKS = {
   // WARRIOR COMBO — 3-swing escalating chain
   warrior_atk1: {
     frames: 6, activeStart: 2, activeEnd: 4,
-    hitbox: { offsetX: 30, offsetY: -12, width: 50, height: 24 },
-    damage: 12, knockback: 2.5, hitstun: 250,
+    hitbox: { offsetX: 32, offsetY: -14, width: 64, height: 30 },
+    damage: 20, knockback: 1, hitstun: 300,
     canCancel: 3, recovery: 1,
   },
   warrior_atk2: {
     frames: 7, activeStart: 2, activeEnd: 4,
-    hitbox: { offsetX: 28, offsetY: -14, width: 58, height: 28 },
-    damage: 18, knockback: 4.0, hitstun: 350,
+    hitbox: { offsetX: 30, offsetY: -16, width: 72, height: 34 },
+    damage: 30, knockback: 1.6, hitstun: 400,
     canCancel: 4, recovery: 1,
   },
   warrior_atk3: {
     frames: 10, activeStart: 3, activeEnd: 6,
-    hitbox: { offsetX: 24, offsetY: -16, width: 66, height: 32 },
-    damage: 30, knockback: 7.0, hitstun: 500,
-    canCancel: -1, recovery: 3,  // Finisher — no cancel, big payoff
+    hitbox: { offsetX: 20, offsetY: -20, width: 100, height: 50 },
+    damage: 60, knockback: 3, hitstun: 700,
+    canCancel: -1, recovery: 3,  // Finisher — ground slam, massive AoE
+    groundSlam: true,
   },
 
   // PRIEST COMBO (staff swings)
   priest_atk1: {
     frames: 6, activeStart: 2, activeEnd: 3,
     hitbox: { offsetX: 24, offsetY: -6, width: 36, height: 14 },
-    damage: 6, knockback: 0.5, hitstun: 150,
+    damage: 6, knockback: 5, hitstun: 150,
     canCancel: 4, recovery: 2,
   },
   priest_atk2: {
     frames: 7, activeStart: 2, activeEnd: 4,
     hitbox: { offsetX: 20, offsetY: -8, width: 44, height: 16 },
-    damage: 8, knockback: 0.8, hitstun: 200,
+    damage: 8, knockback: 8, hitstun: 200,
     canCancel: 5, recovery: 2,
   },
   priest_atk3: {
     frames: 9, activeStart: 3, activeEnd: 5,
     hitbox: { offsetX: 16, offsetY: -10, width: 52, height: 20 },
-    damage: 12, knockback: 1.5, hitstun: 300,
+    damage: 12, knockback: 14, hitstun: 300,
     canCancel: -1, recovery: 3,
+  },
+
+  // MAGE COMBO (arcane bolt chain)
+  mage_atk1: {
+    frames: 5, activeStart: 2, activeEnd: 3,
+    hitbox: { offsetX: 28, offsetY: -8, width: 40, height: 16 },
+    damage: 10, knockback: 3, hitstun: 150,
+    canCancel: 3, recovery: 1,
+  },
+  mage_atk2: {
+    frames: 5, activeStart: 2, activeEnd: 3,
+    hitbox: { offsetX: 32, offsetY: -8, width: 44, height: 16 },
+    damage: 12, knockback: 4, hitstun: 180,
+    canCancel: 3, recovery: 1,
+  },
+  mage_atk3: {
+    frames: 7, activeStart: 2, activeEnd: 4,
+    hitbox: { offsetX: 24, offsetY: -12, width: 52, height: 24 },
+    damage: 20, knockback: 8, hitstun: 300,
+    canCancel: -1, recovery: 2,
   },
 
   // ROGUE COMBO (fast dagger chain)
   rogue_atk1: {
     frames: 4, activeStart: 1, activeEnd: 2,
     hitbox: { offsetX: 24, offsetY: -6, width: 28, height: 12 },
-    damage: 8, knockback: 0.3, hitstun: 100,
+    damage: 8, knockback: 6, hitstun: 100,
     canCancel: 3, recovery: 1,
   },
   rogue_atk2: {
     frames: 4, activeStart: 1, activeEnd: 2,
     hitbox: { offsetX: 28, offsetY: -6, width: 28, height: 12 },
-    damage: 8, knockback: 0.3, hitstun: 100,
+    damage: 8, knockback: 6, hitstun: 100,
     canCancel: 3, recovery: 1,
   },
   rogue_atk3: {
     frames: 5, activeStart: 1, activeEnd: 3,
     hitbox: { offsetX: 24, offsetY: -8, width: 36, height: 14 },
-    damage: 12, knockback: 0.8, hitstun: 150,
+    damage: 12, knockback: 10, hitstun: 150,
     canCancel: 4, recovery: 1,
   },
   rogue_atk4: {
     frames: 8, activeStart: 2, activeEnd: 4,
     hitbox: { offsetX: 20, offsetY: -10, width: 48, height: 18 },
-    damage: 18, knockback: 2.5, hitstun: 350,
+    damage: 18, knockback: 18, hitstun: 350,
     canCancel: -1, recovery: 3,
   },
 };
@@ -439,36 +546,36 @@ export const ENEMIES = {
     name: 'Imp',
     type: 'trash',
     size: 'small',
-    stats: { hp: 300, speed: 50, power: 0.05, defense: 0.4 },
+    stats: { hp: 300, speed: 80, power: 0.05, defense: 0.4 },
     attacks: ['imp_scratch'],
-    aggroRange: 80,
-    attackRange: 16,
-    attackCooldown: 900,
+    aggroRange: 120,
+    attackRange: 18,
+    attackCooldown: 600,
   },
   hellknight: {
     name: 'Hellknight',
     type: 'elite',
     size: 'medium',
-    stats: { hp: 200, speed: 30, power: 0.08, defense: 1.3 },
+    stats: { hp: 200, speed: 55, power: 0.08, defense: 1.3 },
     attacks: ['hellknight_slash', 'hellknight_charge'],
-    aggroRange: 100,
-    attackRange: 22,
-    attackCooldown: 2000,
+    aggroRange: 140,
+    attackRange: 24,
+    attackCooldown: 1400,
   },
   pitlord: {
     name: 'Pitlord',
     type: 'boss',
     size: 'large',
     frameSize: 64,
-    stats: { hp: 750, speed: 20, power: 0.1, defense: 1.6 },
+    stats: { hp: 750, speed: 35, power: 0.1, defense: 1.6 },
     attacks: ['pitlord_cleave', 'pitlord_stomp'],
     phases: [
       { hpThreshold: 0.6, attack: 'pitlord_hellfire' },
       { hpThreshold: 0.3, attack: 'pitlord_enrage' },
     ],
-    aggroRange: 120,
-    attackRange: 28,
-    attackCooldown: 2200,
+    aggroRange: 160,
+    attackRange: 30,
+    attackCooldown: 1600,
   },
 
   // --- FROZEN CRYPT ---

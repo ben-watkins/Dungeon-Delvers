@@ -46,7 +46,7 @@ export class Player extends Phaser.GameObjects.Container {
     this.comboTimer = 0;
     this.comboWindow = 500;  // ms to input next combo hit
     this.inputBuffer = null;  // Buffered action to execute when current state allows
-    this.cooldowns = { special1: 0, special2: 0, special3: 0, special4: 0, special5: 0 };
+    this.cooldowns = { special1: 0, special2: 0, special3: 0, special4: 0, special5: 0, special6: 0, special7: 0, special8: 0 };
     this.hitStopTimer = 0;
     this.knockbackVelocity = { x: 0, y: 0 };
     this.invulnerable = false;
@@ -76,10 +76,12 @@ export class Player extends Phaser.GameObjects.Container {
     this.hpBarFill.setOrigin(0, 0.5);
     this.add(this.hpBarFill);
 
-    // Physics body (for collision detection)
+    // Physics body (for hitbox overlap detection only — no auto-collisions)
     scene.physics.add.existing(this);
     this.body.setSize(16, 8);       // Narrow body for ground collision
     this.body.setOffset(-8, -4);
+    this.body.pushable = false;
+    this.body.immovable = true;
 
     // Active hitbox (created dynamically during attacks)
     this.activeHitbox = null;
@@ -105,6 +107,9 @@ export class Player extends Phaser.GameObjects.Container {
     this.keys.special3 = kb.addKey('NUMPAD_SEVEN');
     this.keys.special4 = kb.addKey('NUMPAD_FOUR');
     this.keys.special5 = kb.addKey('NUMPAD_FIVE');
+    this.keys.special6 = kb.addKey('NUMPAD_SIX');
+    this.keys.special7 = kb.addKey('NUMPAD_EIGHT');
+    this.keys.special8 = kb.addKey('NUMPAD_NINE');
 
     // Tab target reference (set by DungeonScene)
     this.tabTarget = null;
@@ -116,6 +121,9 @@ export class Player extends Phaser.GameObjects.Container {
     this.special3JustPressed = false;
     this.special4JustPressed = false;
     this.special5JustPressed = false;
+    this.special6JustPressed = false;
+    this.special7JustPressed = false;
+    this.special8JustPressed = false;
     this.tabJustPressed = false;
 
     // Gamepad — tracks previous frame button state for just-pressed detection
@@ -154,8 +162,17 @@ export class Player extends Phaser.GameObjects.Container {
           if (this.special5JustPressed && this.cooldowns.special5 <= 0 && this.classData.specials.special5) {
             this.fsm.transition('special5');
           }
+          if (this.special6JustPressed && this.cooldowns.special6 <= 0 && this.classData.specials.special6) {
+            this.fsm.transition('special6');
+          }
+          if (this.special7JustPressed && this.cooldowns.special7 <= 0 && this.classData.specials.special7) {
+            this.fsm.transition('special7');
+          }
+          if (this.special8JustPressed && this.cooldowns.special8 <= 0 && this.classData.specials.special8) {
+            this.fsm.transition('special8');
+          }
         },
-        transitions: { walk: 'walk', attack: 'attack', special1: 'special1', special2: 'special2', special3: 'special3', special4: 'special4', special5: 'special5', hitstun: 'hitstun', death: 'death' },
+        transitions: { walk: 'walk', attack: 'attack', special1: 'special1', special2: 'special2', special3: 'special3', special4: 'special4', special5: 'special5', special6: 'special6', special7: 'special7', special8: 'special8', hitstun: 'hitstun', death: 'death' },
       },
 
       walk: {
@@ -179,8 +196,23 @@ export class Player extends Phaser.GameObjects.Container {
           if (this.special3JustPressed && this.cooldowns.special3 <= 0 && this.classData.specials.special3) {
             this.fsm.transition('special3');
           }
+          if (this.special4JustPressed && this.cooldowns.special4 <= 0 && this.classData.specials.special4) {
+            this.fsm.transition('special4');
+          }
+          if (this.special5JustPressed && this.cooldowns.special5 <= 0 && this.classData.specials.special5) {
+            this.fsm.transition('special5');
+          }
+          if (this.special6JustPressed && this.cooldowns.special6 <= 0 && this.classData.specials.special6) {
+            this.fsm.transition('special6');
+          }
+          if (this.special7JustPressed && this.cooldowns.special7 <= 0 && this.classData.specials.special7) {
+            this.fsm.transition('special7');
+          }
+          if (this.special8JustPressed && this.cooldowns.special8 <= 0 && this.classData.specials.special8) {
+            this.fsm.transition('special8');
+          }
         },
-        transitions: { idle: 'idle', attack: 'attack', special1: 'special1', special2: 'special2', special3: 'special3', hitstun: 'hitstun', death: 'death' },
+        transitions: { idle: 'idle', attack: 'attack', special1: 'special1', special2: 'special2', special3: 'special3', special4: 'special4', special5: 'special5', special6: 'special6', special7: 'special7', special8: 'special8', hitstun: 'hitstun', death: 'death' },
       },
 
       attack: {
@@ -396,6 +428,26 @@ export class Player extends Phaser.GameObjects.Container {
               emitting: true,
             });
             this.ascensionAura.setDepth(GAME_CONFIG.layers.foregroundDecor);
+          } else if (this.classKey === 'mage') {
+            // --- MAGE: Blink (instant teleport) ---
+            const dist = special.distance || 80;
+            const dir = this.facingRight ? 1 : -1;
+            this.sprite.play(`${this.classKey}_special1`, true);
+
+            this.scene.events.emit('playerSpecial', {
+              player: this, special, key: 'special3',
+            });
+
+            this.x += dir * dist;
+            this.y = this.groundY;
+
+            this.sprite.once('animationcomplete', () => {
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            });
+            this.scene.time.delayedCall(400, () => {
+              if (this.fsm.is('special3')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+            });
           } else {
             // --- WARRIOR: Heroic Leap ---
             let targetX = this.x + (this.facingRight ? 60 : -60);
@@ -420,6 +472,10 @@ export class Player extends Phaser.GameObjects.Container {
           }
         },
         update(dt) {
+          if (this.special3Class === 'mage') {
+            // Mage blink is instant — just wait for animation
+            return;
+          }
           if (this.special3Class === 'priest') {
             // --- PRIEST: Divine Ascension update ---
             this.ascensionTimer += dt;
@@ -738,18 +794,22 @@ export class Player extends Phaser.GameObjects.Container {
 
           this.scene.events.emit('playerAttack');
 
-          // Spinning VFX — horizontal ellipse slash ring
+          // VFX graphics (beam for mage, ellipse for warrior)
           this.whirlwindGfx = this.scene.add.graphics();
           this.whirlwindGfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
+          this.isBeamChannel = this.classKey === 'mage';
 
-          // Spark particles spraying outward
+          // Spark particles
+          const beamTint = this.isBeamChannel ? 0xff44aa : 0xccddff;
           this.whirlwindParticles = this.scene.add.particles(this.x, this.groundY, 'vfx_pixel', {
             speed: { min: 25, max: 55 },
-            angle: { min: 0, max: 360 },
+            angle: this.isBeamChannel
+              ? (this.facingRight ? { min: -20, max: 20 } : { min: 160, max: 200 })
+              : { min: 0, max: 360 },
             lifespan: 180,
-            tint: 0xccddff,
+            tint: beamTint,
             alpha: { start: 0.7, end: 0 },
-            frequency: 35,
+            frequency: this.isBeamChannel ? 20 : 35,
             emitting: true,
           });
           this.whirlwindParticles.setDepth(GAME_CONFIG.layers.foregroundDecor);
@@ -771,40 +831,86 @@ export class Player extends Phaser.GameObjects.Container {
           // Advance spin angle
           this.whirlwindAngle += dt * 0.025;
 
-          // Draw horizontal ellipse slash ring at waist height
           const cx = this.x;
           const cy = this.groundY - 18;
+          if (!this.whirlwindGfx) return;
           this.whirlwindGfx.clear();
 
-          // Outer slash arc — drawn as horizontal ellipse segments
-          const r = 28;
-          const ry = 10; // Squashed vertically for horizontal/top-down look
-          this.whirlwindGfx.lineStyle(3, 0xeeeeff, 0.85);
-          this.whirlwindGfx.beginPath();
-          for (let i = 0; i < 20; i++) {
-            const a = this.whirlwindAngle + (i / 20) * Math.PI * 1.4;
-            const px = cx + Math.cos(a) * r;
-            const py = cy + Math.sin(a) * ry;
-            if (i === 0) this.whirlwindGfx.moveTo(px, py);
-            else this.whirlwindGfx.lineTo(px, py);
-          }
-          this.whirlwindGfx.strokePath();
+          if (this.isBeamChannel) {
+            // ── DISINTEGRATE BEAM (Mage) ──
+            const dir = this.facingRight ? 1 : -1;
+            const beamLen = special.range || 140;
+            const bx = cx + dir * 12;
+            const by = cy + 4;
+            const endX = bx + dir * beamLen;
+            const wobble = Math.sin(this.whirlwindAngle * 3) * 2;
 
-          // Second arc offset for double-blade look
-          this.whirlwindGfx.lineStyle(2, 0x88bbff, 0.6);
-          this.whirlwindGfx.beginPath();
-          for (let i = 0; i < 20; i++) {
-            const a = this.whirlwindAngle + Math.PI + (i / 20) * Math.PI * 1.4;
-            const px = cx + Math.cos(a) * (r + 4);
-            const py = cy + Math.sin(a) * (ry + 2);
-            if (i === 0) this.whirlwindGfx.moveTo(px, py);
-            else this.whirlwindGfx.lineTo(px, py);
-          }
-          this.whirlwindGfx.strokePath();
+            // Core beam (bright magenta-white)
+            this.whirlwindGfx.lineStyle(4, 0xff66cc, 0.9);
+            this.whirlwindGfx.beginPath();
+            this.whirlwindGfx.moveTo(bx, by);
+            for (let i = 1; i <= 8; i++) {
+              const t = i / 8;
+              const px = bx + dir * beamLen * t;
+              const py = by + Math.sin(this.whirlwindAngle * 4 + t * 6) * (2 + t * 3);
+              this.whirlwindGfx.lineTo(px, py);
+            }
+            this.whirlwindGfx.strokePath();
 
-          // Update particle position to follow player
-          if (this.whirlwindParticles) {
-            this.whirlwindParticles.setPosition(cx, cy);
+            // Outer glow beam
+            this.whirlwindGfx.lineStyle(8, 0xaa44ff, 0.3);
+            this.whirlwindGfx.beginPath();
+            this.whirlwindGfx.moveTo(bx, by);
+            this.whirlwindGfx.lineTo(endX, by + wobble);
+            this.whirlwindGfx.strokePath();
+
+            // Inner hot core
+            this.whirlwindGfx.lineStyle(2, 0xffffff, 0.8);
+            this.whirlwindGfx.beginPath();
+            this.whirlwindGfx.moveTo(bx, by);
+            this.whirlwindGfx.lineTo(endX, by + wobble * 0.5);
+            this.whirlwindGfx.strokePath();
+
+            // Source glow
+            this.whirlwindGfx.fillStyle(0xff88dd, 0.6);
+            this.whirlwindGfx.fillCircle(bx, by, 4 + Math.sin(this.whirlwindAngle * 5) * 1.5);
+
+            // Particle position at beam end
+            if (this.whirlwindParticles) {
+              this.whirlwindParticles.setPosition(endX, by + wobble);
+            }
+          } else {
+            // ── WHIRLWIND (Warrior) ──
+            // Outer slash arc — drawn as horizontal ellipse segments
+            const r = 28;
+            const ry = 10;
+            this.whirlwindGfx.lineStyle(3, 0xeeeeff, 0.85);
+            this.whirlwindGfx.beginPath();
+            for (let i = 0; i < 20; i++) {
+              const a = this.whirlwindAngle + (i / 20) * Math.PI * 1.4;
+              const px = cx + Math.cos(a) * r;
+              const py = cy + Math.sin(a) * ry;
+              if (i === 0) this.whirlwindGfx.moveTo(px, py);
+              else this.whirlwindGfx.lineTo(px, py);
+            }
+            this.whirlwindGfx.strokePath();
+
+            // Second arc offset for double-blade look
+            this.whirlwindGfx.lineStyle(2, 0x88bbff, 0.6);
+            this.whirlwindGfx.beginPath();
+            for (let i = 0; i < 20; i++) {
+              const a = this.whirlwindAngle + Math.PI + (i / 20) * Math.PI * 1.4;
+              const px = cx + Math.cos(a) * (r + 4);
+              const py = cy + Math.sin(a) * (ry + 2);
+              if (i === 0) this.whirlwindGfx.moveTo(px, py);
+              else this.whirlwindGfx.lineTo(px, py);
+            }
+            this.whirlwindGfx.strokePath();
+
+            // Update particle position to follow player
+            if (this.whirlwindParticles) {
+              this.whirlwindParticles.setPosition(cx, cy);
+            }
           }
 
           // Damage tick
@@ -814,13 +920,25 @@ export class Player extends Phaser.GameObjects.Container {
 
             const enemies = this.scene.getAliveEnemies();
             for (const enemy of enemies) {
-              const dist = Phaser.Math.Distance.Between(
-                this.x, this.groundY, enemy.x, enemy.groundY
-              );
-              if (dist <= special.radius) {
+              let inRange = false;
+              if (this.isBeamChannel) {
+                // Beam: check if enemy is in front and within beam width
+                const dx = enemy.x - this.x;
+                const dy = Math.abs(enemy.groundY - this.groundY);
+                const fDir = this.facingRight ? 1 : -1;
+                inRange = (dx * fDir > 0 && dx * fDir <= (special.range || 140) && dy < 20);
+              } else {
+                const dist = Phaser.Math.Distance.Between(
+                  this.x, this.groundY, enemy.x, enemy.groundY
+                );
+                inRange = dist <= special.radius;
+              }
+              if (inRange) {
+                const dist = Phaser.Math.Distance.Between(this.x, this.groundY, enemy.x, enemy.groundY) || 1;
+                const kb = special.knockback || 0.5;
                 const dir = {
-                  x: (enemy.x - this.x) / (dist || 1) * special.knockback,
-                  y: ((enemy.groundY - this.groundY) / (dist || 1)) * special.knockback * 0.3,
+                  x: (enemy.x - this.x) / dist * kb,
+                  y: ((enemy.groundY - this.groundY) / dist) * kb * 0.3,
                 };
                 enemy.takeDamage(special.damagePerTick * this.power * 10, dir, 100);
               }
@@ -843,7 +961,168 @@ export class Player extends Phaser.GameObjects.Container {
             this.whirlwindParticles = null;
           }
         },
-        transitions: { idle: 'idle', death: 'death' },
+        transitions: { idle: 'idle', hitstun: 'hitstun', death: 'death' },
+      },
+
+      // ─── SPECIAL 6: Meteor Storm (Mage) ───
+      special6: {
+        enter() {
+          const special = this.classData.specials.special6;
+          if (!special) { this.fsm.transition('idle'); return; }
+          this.cooldowns.special6 = special.cooldown;
+          this.fsm.locked = true;
+          this.sprite.play(`${this.classKey}_special1`, true);
+
+          this.scene.events.emit('playerSpecial', {
+            player: this, special, key: 'special6',
+          });
+
+          // Rain meteors with delays
+          const count = special.meteorCount || 8;
+          const delay = special.meteorDelay || 200;
+          for (let i = 0; i < count; i++) {
+            this.scene.time.delayedCall(i * delay, () => {
+              if (this.dead || !this.scene) return;
+              const enemies = this.scene.getAliveEnemies();
+              if (enemies.length === 0) return;
+              const target = enemies[Phaser.Math.Between(0, enemies.length - 1)];
+              const mx = target.x + Phaser.Math.Between(-30, 30);
+              const my = target.groundY + Phaser.Math.Between(-10, 10);
+
+              // Damage enemies near impact
+              for (const enemy of enemies) {
+                const dist = Phaser.Math.Distance.Between(mx, my, enemy.x, enemy.groundY);
+                if (dist <= 30) {
+                  const dir = { x: (enemy.x - mx) / (dist || 1) * 8, y: 0 };
+                  enemy.takeDamage(special.damagePerMeteor * this.power * 10, dir, 200);
+                }
+              }
+
+              // VFX event
+              this.scene.events.emit('meteorImpact', { x: mx, y: my });
+            });
+          }
+
+          this.scene.time.delayedCall(count * delay + 200, () => {
+            if (this.dead || !this.scene) return;
+            if (this.fsm.is('special6')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+          });
+        },
+        update(dt) { this.handleMovementInput(dt); },
+        transitions: { idle: 'idle', hitstun: 'hitstun', death: 'death' },
+      },
+
+      // ─── SPECIAL 7: Chain Lightning (Mage) ───
+      special7: {
+        enter() {
+          const special = this.classData.specials.special7;
+          if (!special) { this.fsm.transition('idle'); return; }
+          this.cooldowns.special7 = special.cooldown;
+          this.fsm.locked = true;
+          this.sprite.play(`${this.classKey}_special2`, true);
+
+          this.scene.time.delayedCall(150, () => {
+            if (this.dead || !this.scene) return;
+            const enemies = this.scene.getAliveEnemies();
+            if (enemies.length === 0) return;
+
+            // Find closest enemy as first target
+            let current = null;
+            let minDist = Infinity;
+            for (const e of enemies) {
+              if (e.dead || e.hp <= 0) continue;
+              const d = Phaser.Math.Distance.Between(this.x, this.groundY, e.x, e.groundY);
+              if (d < minDist && d <= special.range) { minDist = d; current = e; }
+            }
+            if (!current) return;
+
+            // Chain through enemies
+            const hit = new Set();
+            const chainPoints = [{ x: this.x, y: this.groundY - 12 }];
+            let bounces = special.bounces || 5;
+
+            while (current && bounces > 0) {
+              hit.add(current);
+              chainPoints.push({ x: current.x, y: current.groundY - 10 });
+              const dir = { x: (Math.random() - 0.5) * 2, y: 0 };
+              current.takeDamage(special.damage * this.power * 10, dir, 150);
+              bounces--;
+
+              // Find next closest unhit enemy
+              let next = null;
+              let nextDist = Infinity;
+              for (const e of enemies) {
+                if (hit.has(e)) continue;
+                const d = Phaser.Math.Distance.Between(current.x, current.groundY, e.x, e.groundY);
+                if (d < nextDist && d <= 80) { nextDist = d; next = e; }
+              }
+              current = next;
+            }
+
+            this.scene.events.emit('chainLightning', { points: chainPoints });
+          });
+
+          this.scene.events.emit('playerSpecial', {
+            player: this, special, key: 'special7',
+          });
+
+          this.sprite.once('animationcomplete', () => {
+            this.fsm.locked = false;
+            this.fsm.transition('idle');
+          });
+          this.scene.time.delayedCall(800, () => {
+            if (this.fsm.is('special7')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+          });
+        },
+        update(dt) { this.handleMovementInput(dt); },
+        transitions: { idle: 'idle', hitstun: 'hitstun', death: 'death' },
+      },
+
+      // ─── SPECIAL 8: Time Warp (Mage) ───
+      special8: {
+        enter() {
+          const special = this.classData.specials.special8;
+          if (!special) { this.fsm.transition('idle'); return; }
+          this.cooldowns.special8 = special.cooldown;
+          this.fsm.locked = true;
+          this.sprite.play(`${this.classKey}_special1`, true);
+
+          // Slow all enemies
+          const enemies = this.scene.getAliveEnemies();
+          const originalSpeeds = [];
+          for (const enemy of enemies) {
+            originalSpeeds.push({ enemy, speed: enemy.speed });
+            enemy.speed *= special.slowPercent;
+            enemy.sprite.setTint(0x6666ff);
+          }
+
+          this.scene.events.emit('playerSpecial', {
+            player: this, special, key: 'special8',
+          });
+          this.scene.events.emit('timeWarp', {
+            player: this, duration: special.duration, radius: special.radius,
+          });
+
+          // Restore speeds after duration
+          this.scene.time.delayedCall(special.duration, () => {
+            for (const { enemy, speed } of originalSpeeds) {
+              if (enemy && !enemy.dead && enemy.hp > 0 && enemy.sprite && enemy.scene) {
+                enemy.speed = speed;
+                enemy.sprite.clearTint();
+              }
+            }
+          });
+
+          this.sprite.once('animationcomplete', () => {
+            this.fsm.locked = false;
+            this.fsm.transition('idle');
+          });
+          this.scene.time.delayedCall(600, () => {
+            if (this.fsm.is('special8')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+          });
+        },
+        update(dt) { this.handleMovementInput(dt); },
+        transitions: { idle: 'idle', hitstun: 'hitstun', death: 'death' },
       },
 
       hitstun: {
@@ -1033,6 +1312,9 @@ export class Player extends Phaser.GameObjects.Container {
     this.special3JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special3);
     this.special4JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special4);
     this.special5JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special5);
+    this.special6JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special6);
+    this.special7JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special7);
+    this.special8JustPressed = Phaser.Input.Keyboard.JustDown(this.keys.special8);
     this.tabJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.tab);
 
     // Gamepad button just-pressed detection
@@ -1065,6 +1347,9 @@ export class Player extends Phaser.GameObjects.Container {
     if (this.cooldowns.special3 > 0) this.cooldowns.special3 -= dt;
     if (this.cooldowns.special4 > 0) this.cooldowns.special4 -= dt;
     if (this.cooldowns.special5 > 0) this.cooldowns.special5 -= dt;
+    if (this.cooldowns.special6 > 0) this.cooldowns.special6 -= dt;
+    if (this.cooldowns.special7 > 0) this.cooldowns.special7 -= dt;
+    if (this.cooldowns.special8 > 0) this.cooldowns.special8 -= dt;
 
     // Combo window decay
     if (this.comboTimer > 0) {

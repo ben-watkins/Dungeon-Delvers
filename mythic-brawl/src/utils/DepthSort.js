@@ -20,6 +20,7 @@ export function sortGroup(group) {
   const children = group.getChildren();
   for (let i = 0; i < children.length; i++) {
     const entity = children[i];
+    if (!entity.active) continue; // Skip destroyed entities
     // groundY is stored on the entity; fallback to sprite y
     const groundY = entity.groundY ?? entity.y;
     entity.setDepth(GAME_CONFIG.layers.entities + groundY);

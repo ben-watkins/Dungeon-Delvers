@@ -243,7 +243,7 @@ export class CombatSystem {
     const len = Math.sqrt(dx * dx + dy * dy) || 1;
     return {
       x: (dx / len) * force,
-      y: (dy / len) * force * 0.3,
+      y: (dy / len) * force * 0.15,  // Less vertical drift so they fly horizontally
     };
   }
 

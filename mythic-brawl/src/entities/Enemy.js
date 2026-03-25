@@ -27,6 +27,7 @@ export class Enemy extends Phaser.GameObjects.Container {
     this.enemyKey = enemyKey;
     this.enemyData = ENEMIES[enemyKey];
     this.groundY = y;
+    this.networkId = null;
     this.jumpZ = 0;
     this.facingRight = false;  // Enemies face left by default (toward player)
 
@@ -95,10 +96,12 @@ export class Enemy extends Phaser.GameObjects.Container {
       this.hpBarFill.setTint(0xcc4444);
     }
 
-    // Physics
+    // Physics (body used for hitbox overlap detection only — no auto-collisions)
     scene.physics.add.existing(this);
     this.body.setSize(16, 8);
     this.body.setOffset(-8, -4);
+    this.body.pushable = false;
+    this.body.immovable = true;
 
     // State machine
     this.fsm = new StateMachine(this, this.buildStates());
@@ -123,6 +126,10 @@ export class Enemy extends Phaser.GameObjects.Container {
       chase: {
         enter() {
           this.sprite.play(`${this.enemyKey}_walk`, true);
+          // Pick a strafe direction for circling behavior
+          this.strafeDir = Math.random() < 0.5 ? 1 : -1;
+          this.strafeTimer = 0;
+          this.strafeDuration = 400 + Math.random() * 600;
         },
         update(dt) {
           if (!this.target || this.target.hp <= 0) {
@@ -136,20 +143,31 @@ export class Enemy extends Phaser.GameObjects.Container {
           const dist = this.distToTarget();
 
           if (this.attackTimer <= 0) {
-            // 25% chance ranged attack when at medium distance
-            if (dist > 60 && dist <= 150 && Math.random() < 0.25) {
+            // Ranged attack at medium distance
+            if (dist > 60 && dist <= 150 && Math.random() < 0.35) {
               this.fireRangedAttack();
               this.attackTimer = this.attackCooldown;
               return;
             }
-            if (dist <= this.attackRange) {
+            if (dist <= this.attackRange + 8) {
               this.fsm.transition('attack');
               return;
             }
           }
 
-          // Move toward target
-          this.moveTowardTarget(dt);
+          // Circling/strafing when close but not in attack range
+          if (dist < 60 && dist > this.attackRange && this.attackTimer > 0) {
+            this.strafeTimer += dt;
+            if (this.strafeTimer > this.strafeDuration) {
+              this.strafeDir *= -1;
+              this.strafeTimer = 0;
+              this.strafeDuration = 400 + Math.random() * 600;
+            }
+            this.strafeAroundTarget(dt);
+          } else {
+            // Rush toward target
+            this.moveTowardTarget(dt);
+          }
         },
         transitions: { idle: 'idle', attack: 'attack', hitstun: 'hitstun', death: 'death' },
       },
@@ -159,6 +177,7 @@ export class Enemy extends Phaser.GameObjects.Container {
           this.sprite.play(`${this.enemyKey}_atk1`, true);
           this.attackTimer = this.attackCooldown;
           this.fsm.locked = true;
+          this.attackWindup = true;
 
           // Face target
           if (this.target) {
@@ -166,17 +185,29 @@ export class Enemy extends Phaser.GameObjects.Container {
             this.sprite.setFlipX(!this.facingRight);
           }
 
-          // Emit attack hitbox after brief windup
-          this.scene.time.delayedCall(200, () => {
-            if (this.fsm.is('attack')) {
+          // Telegraph — emit event so VFX can show windup indicator
+          this.scene.events.emit('enemyWindup', {
+            enemy: this,
+            duration: 350,
+          });
+
+          // Lunge forward slightly during windup
+          const lungeDir = this.facingRight ? 1 : -1;
+          this.lungeVx = lungeDir * 1.5;
+
+          // Emit attack hitbox after windup
+          this.scene.time.delayedCall(350, () => {
+            if (this.fsm.is('attack') && !this.dead) {
+              this.attackWindup = false;
+              this.lungeVx = lungeDir * 3; // Lunge burst on swing
               this.scene.events.emit('enemyAttack', {
                 enemy: this,
                 damage: 10 * this.power,
                 hitbox: {
-                  x: this.x + (this.facingRight ? 14 : -14),
-                  y: this.groundY - 8,
-                  width: 18,
-                  height: 14,
+                  x: this.x + (this.facingRight ? 16 : -34),
+                  y: this.groundY - 12,
+                  width: 28,
+                  height: 20,
                 },
               });
             }
@@ -188,26 +219,45 @@ export class Enemy extends Phaser.GameObjects.Container {
             this.fsm.transition('retreat');
           });
         },
-        update(dt) {},
+        update(dt) {
+          // Lunge movement during attack
+          if (this.lungeVx) {
+            this.x += this.lungeVx;
+            this.clampToRoom();
+            this.lungeVx *= 0.85;
+            if (Math.abs(this.lungeVx) < 0.1) this.lungeVx = 0;
+          }
+        },
         transitions: { retreat: 'retreat', hitstun: 'hitstun', death: 'death' },
       },
 
       retreat: {
         enter() {
           this.sprite.play(`${this.enemyKey}_walk`, true);
+          // Randomize retreat direction — not always straight back
+          this.retreatAngle = (Math.random() - 0.5) * 1.5;
         },
         update(dt) {
           this.retreatTimer -= dt;
 
-          // Move away from target
+          // Dodge-roll style retreat — move away at an angle
           if (this.target) {
             const dx = this.x - this.target.x;
             const dy = this.groundY - this.target.groundY;
             const len = Math.sqrt(dx * dx + dy * dy) || 1;
-            const spd = this.speed * 0.5 * (dt / 1000);
-            this.x += (dx / len) * spd;
-            this.groundY = clampToGround(this.groundY + (dy / len) * spd * 0.6);
+            const nx = dx / len;
+            const ny = dy / len;
+            // Rotate retreat direction by retreatAngle
+            const cos = Math.cos(this.retreatAngle);
+            const sin = Math.sin(this.retreatAngle);
+            const rx = nx * cos - ny * sin;
+            const ry = nx * sin + ny * cos;
+
+            const spd = this.speed * 0.7 * (dt / 1000);
+            this.x += rx * spd;
+            this.groundY = clampToGround(this.groundY + ry * spd * 0.6);
             this.y = this.groundY;
+            this.clampToRoom();
           }
 
           if (this.retreatTimer <= 0) {
@@ -228,6 +278,7 @@ export class Enemy extends Phaser.GameObjects.Container {
           this.x += this.knockbackVelocity.x;
           this.groundY = clampToGround(this.groundY + this.knockbackVelocity.y);
           this.y = this.groundY;
+          this.clampToRoom();
           this.knockbackVelocity.x *= GAME_CONFIG.knockbackDecay;
           this.knockbackVelocity.y *= GAME_CONFIG.knockbackDecay;
 
@@ -250,6 +301,7 @@ export class Enemy extends Phaser.GameObjects.Container {
           this.x += this.knockbackVelocity.x;
           this.groundY = clampToGround(this.groundY + this.knockbackVelocity.y);
           this.y = this.groundY;
+          this.clampToRoom();
           this.knockbackVelocity.x *= GAME_CONFIG.knockbackDecay;
           this.knockbackVelocity.y *= GAME_CONFIG.knockbackDecay;
 
@@ -301,6 +353,7 @@ export class Enemy extends Phaser.GameObjects.Container {
           this.x += this.knockbackVelocity.x;
           this.groundY = clampToGround(this.groundY + this.knockbackVelocity.y);
           this.y = this.groundY;
+          this.clampToRoom();
           this.knockbackVelocity.x *= GAME_CONFIG.knockbackDecay;
           this.knockbackVelocity.y *= GAME_CONFIG.knockbackDecay;
 
@@ -319,14 +372,156 @@ export class Enemy extends Phaser.GameObjects.Container {
 
       death: {
         enter() {
-          this.sprite.play(`${this.enemyKey}_death`, true);
           this.fsm.locked = true;
-          this.scene.events.emit('enemyDeath', this);
+          this.dead = true;
 
-          this.sprite.once('animationcomplete', () => {
-            this.scene.time.delayedCall(500, () => {
-              this.destroy();
+          // Disable physics body immediately so it doesn't block movement
+          if (this.body) {
+            this.body.enable = false;
+          }
+
+          // Cache scene ref — this.scene becomes null after destroy()
+          const scene = this.scene;
+          scene.events.emit('enemyDeath', this);
+
+          // Hide the original sprite immediately
+          this.sprite.setVisible(false);
+          if (this.hpBarBg) this.hpBarBg.setVisible(false);
+          if (this.hpBarFill) this.hpBarFill.setVisible(false);
+          if (this.bleedIcon) this.bleedIcon.setVisible(false);
+          if (this.shadow) this.shadow.setVisible(false);
+
+          // --- GORE EXPLOSION ---
+          const cx = this.x;
+          const cy = this.y;
+          const depthVal = this.depth;
+          const gibColors = [0xcc1111, 0x991111, 0x660000, 0xdd3333, 0x880000];
+          const boneColors = [0xddccbb, 0xccbbaa, 0xeeddcc];
+
+          const pickColor = (arr) => arr[Phaser.Math.Between(0, arr.length - 1)];
+
+          // Blood splatter particles (lots of small dots)
+          for (let i = 0; i < 24; i++) {
+            const size = Phaser.Math.Between(1, 3);
+            const blood = scene.add.graphics();
+            blood.fillStyle(pickColor(gibColors), 1);
+            blood.fillCircle(0, 0, size);
+            blood.setPosition(cx, cy);
+            blood.setDepth(depthVal + 1);
+
+            const angle = Math.random() * Math.PI * 2;
+            const speed = Phaser.Math.Between(60, 200);
+            const targetX = cx + Math.cos(angle) * speed;
+            const targetY = cy + Math.sin(angle) * speed * 0.6;
+
+            scene.tweens.add({
+              targets: blood,
+              x: targetX,
+              y: targetY,
+              alpha: 0,
+              duration: Phaser.Math.Between(400, 900),
+              ease: 'Power2',
+              onComplete: () => blood.destroy(),
             });
+          }
+
+          // Body part chunks (larger pieces that arc with gravity)
+          const partShapes = ['circle', 'rect', 'triangle'];
+          for (let i = 0; i < 8; i++) {
+            const chunk = scene.add.graphics();
+            const color = i < 5 ? pickColor(gibColors) : pickColor(boneColors);
+            const shape = partShapes[Phaser.Math.Between(0, partShapes.length - 1)];
+            const chunkSize = Phaser.Math.Between(2, 5);
+
+            chunk.fillStyle(color, 1);
+            if (shape === 'circle') {
+              chunk.fillCircle(0, 0, chunkSize);
+            } else if (shape === 'rect') {
+              chunk.fillRect(-chunkSize, -chunkSize / 2, chunkSize * 2, chunkSize);
+            } else {
+              chunk.fillTriangle(0, -chunkSize, -chunkSize, chunkSize, chunkSize, chunkSize);
+            }
+
+            chunk.setPosition(cx, cy);
+            chunk.setDepth(depthVal + 2);
+
+            // Arc trajectory: launch upward and outward, then fall with gravity
+            const launchAngle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI;
+            const launchSpeed = Phaser.Math.Between(80, 180);
+            const vx = Math.cos(launchAngle) * launchSpeed;
+            const vy = Math.sin(launchAngle) * launchSpeed;
+            const gravity = 300;
+            const duration = Phaser.Math.Between(600, 1200);
+            const t = duration / 1000;
+
+            const finalX = cx + vx * t;
+            const finalY = cy + vy * t + 0.5 * gravity * t * t;
+            const peakY = cy + vy * t * 0.35;
+
+            // Single combined tween for X + fade
+            scene.tweens.add({
+              targets: chunk,
+              x: finalX,
+              angle: Phaser.Math.Between(-720, 720),
+              duration: duration,
+              ease: 'Linear',
+            });
+            // Y: rise then fall (two chained tweens)
+            scene.tweens.add({
+              targets: chunk,
+              y: peakY,
+              duration: duration * 0.35,
+              ease: 'Quad.easeOut',
+              onComplete: () => {
+                scene.tweens.add({
+                  targets: chunk,
+                  y: finalY,
+                  duration: duration * 0.65,
+                  ease: 'Quad.easeIn',
+                });
+              },
+            });
+            // Fade out at end
+            scene.tweens.add({
+              targets: chunk,
+              alpha: 0,
+              delay: duration * 0.6,
+              duration: duration * 0.4,
+              onComplete: () => chunk.destroy(),
+            });
+          }
+
+          // Blood pool left on ground
+          const pool = scene.add.graphics();
+          pool.fillStyle(0x660000, 0.7);
+          pool.fillCircle(0, 0, 6);
+          pool.setPosition(cx, cy + 2);
+          pool.setDepth(depthVal - 1);
+          pool.setScale(0.5, 0.3);
+          pool.setAlpha(0);
+
+          scene.tweens.add({
+            targets: pool,
+            alpha: 0.5,
+            scaleX: Phaser.Math.FloatBetween(3, 5),
+            scaleY: Phaser.Math.FloatBetween(1.5, 2.5),
+            duration: 400,
+            ease: 'Power2',
+          });
+          scene.tweens.add({
+            targets: pool,
+            alpha: 0,
+            delay: 2500,
+            duration: 1500,
+            onComplete: () => pool.destroy(),
+          });
+
+          // Screen shake on death
+          scene.cameras.main.shake(120, 0.006);
+
+          // Destroy the enemy container after effects launch
+          scene.time.delayedCall(200, () => {
+            this.destroy();
           });
         },
         update(dt) {},
@@ -389,6 +584,34 @@ export class Enemy extends Phaser.GameObjects.Container {
     // Face target
     this.facingRight = dx > 0;
     this.sprite.setFlipX(!this.facingRight);
+  }
+
+  strafeAroundTarget(dt) {
+    if (!this.target) return;
+
+    const dx = this.target.x - this.x;
+    const dy = this.target.groundY - this.groundY;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const spd = this.speed * 0.8 * (dt / 1000);
+
+    // Perpendicular direction for circling
+    const perpX = -dy / len * this.strafeDir;
+    const perpY = dx / len * this.strafeDir;
+
+    // Mix some approach with strafe
+    this.x += (perpX * 0.7 + dx / len * 0.3) * spd;
+    this.groundY = clampToGround(this.groundY + (perpY * 0.7 + dy / len * 0.3) * spd * 0.6);
+    this.y = this.groundY;
+
+    this.facingRight = dx > 0;
+    this.sprite.setFlipX(!this.facingRight);
+  }
+
+  clampToRoom() {
+    const scene = this.scene;
+    if (scene && scene.roomLeftBound !== undefined) {
+      this.x = Phaser.Math.Clamp(this.x, scene.roomLeftBound + 8, scene.roomRightBound - 8);
+    }
   }
 
   distToTarget() {
@@ -514,6 +737,7 @@ export class Enemy extends Phaser.GameObjects.Container {
   }
 
   update(time, dt) {
+    if (this.dead) return;
     if (this.attackTimer > 0) this.attackTimer -= dt;
     this.updateBleed(dt);
     this.fsm.update(dt);

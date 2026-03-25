@@ -14,7 +14,7 @@ const CLASS_COLORS = {
   warrior: 0xcccccc,   // steel
   priest: 0xeedd88,    // golden
   rogue: 0x88ccff,     // icy blue
-  mage: 0xaa66ff,      // arcane purple
+  mage: 0xaa66ff,      // arcane purple — combo attacks glow purple
 };
 
 // Enemy swipe colors
@@ -30,6 +30,7 @@ export class VFXSystem {
 
     scene.events.on('hitboxActive', this.onHitboxActive, this);
     scene.events.on('enemyAttack', this.onEnemyAttack, this);
+    scene.events.on('enemyWindup', this.onEnemyWindup, this);
     scene.events.on('aiAttack', this.onAIAttack, this);
     scene.events.on('playerSpecial', this.onPlayerSpecial, this);
     scene.events.on('aiHeal', this.onAIHeal, this);
@@ -37,6 +38,9 @@ export class VFXSystem {
     scene.events.on('priestBeam', this.onPriestBeam, this);
     scene.events.on('priestHealBlob', this.onPriestHealBlob, this);
     scene.events.on('priestHealLightning', this.onPriestHealLightning, this);
+    scene.events.on('meteorImpact', this.onMeteorImpact, this);
+    scene.events.on('chainLightning', this.onChainLightning, this);
+    scene.events.on('timeWarp', this.onTimeWarp, this);
   }
 
   // ─── EVENT HANDLERS ───────────────────────────────────────
@@ -68,12 +72,30 @@ export class VFXSystem {
     const dir = enemy.facingRight ? 1 : -1;
     const cx = hitbox.x + hitbox.width / 2;
     const cy = hitbox.y + hitbox.height / 2;
+    const baseKey = enemy.enemyKey.replace(/^(frozen_|forge_|temple_)/, '');
 
-    if (enemy.enemyKey === 'imp') {
-      this.spawnScratchMarks(cx, cy, dir, color);
+    if (baseKey === 'imp' || baseKey === 'wraith' || baseKey === 'murloc') {
+      this.spawnImpSwipe(enemy, cx, cy, dir, color);
+    } else if (baseKey === 'hellknight' || baseKey === 'golem' || baseKey === 'naga') {
+      this.spawnHeavySlam(enemy, cx, cy, dir, color);
     } else {
-      const radius = enemy.enemyKey === 'pitlord' ? 18 : 12;
-      this.spawnSlashArc(cx, cy, dir, radius, color);
+      // Boss attacks
+      this.spawnBossCleave(enemy, cx, cy, dir, color);
+    }
+  }
+
+  onEnemyWindup(data) {
+    if (!this.scene) return;
+    const { enemy, duration } = data;
+    if (!enemy || enemy.dead) return;
+    const baseKey = enemy.enemyKey.replace(/^(frozen_|forge_|temple_)/, '');
+
+    if (baseKey === 'imp' || baseKey === 'wraith' || baseKey === 'murloc') {
+      this.spawnSmallTelegraph(enemy, duration);
+    } else if (baseKey === 'hellknight' || baseKey === 'golem' || baseKey === 'naga') {
+      this.spawnHeavyTelegraph(enemy, duration);
+    } else {
+      this.spawnBossTelegraph(enemy, duration);
     }
   }
 
@@ -92,7 +114,7 @@ export class VFXSystem {
     if (cls === 'warrior' && key === 'special1') {
       this.spawnMegaSlash(player);
     } else if (cls === 'warrior' && key === 'special2') {
-      this.spawnShieldBashWave(player);
+      this.spawnShotgunBlast(player);
     } else if (cls === 'warrior' && key === 'special3') {
       this.spawnLeapImpact(player);
     } else if (cls === 'warrior' && key === 'special4') {
@@ -105,8 +127,22 @@ export class VFXSystem {
       this.spawnDaggerFlurry(player);
     } else if (cls === 'rogue' && key === 'special2') {
       this.spawnShadowStrike(player);
+    } else if (cls === 'mage' && key === 'special1') {
+      this.spawnArcaneMissiles(player);
+    } else if (cls === 'mage' && key === 'special2') {
+      this.spawnCometCrash(player);
+    } else if (cls === 'mage' && key === 'special3') {
+      this.spawnBlinkEffect(player);
+    } else if (cls === 'mage' && key === 'special4') {
+      this.spawnFrostNova(player);
+    } else if (cls === 'mage' && key === 'special5') {
+      // Disintegrate beam handled in update loop VFX
+      this.spawnDisintegrateStart(player);
+    } else if (cls === 'mage' && key === 'special7') {
+      // Chain lightning VFX handled by chainLightning event
+    } else if (cls === 'mage' && key === 'special8') {
+      // Time Warp handled by timeWarp event
     } else if (cls === 'mage') {
-      // Generic arcane burst for mage specials
       this.spawnNovaRing(player.x, player.groundY - 8, 0xaa66ff);
     }
   }
@@ -191,51 +227,18 @@ export class VFXSystem {
     const cy = owner.groundY - 16;
 
     if (combo === 0) {
-      // Hit 1 — wide horizontal slash
+      // Hit 1 — BIG horizontal slash
       const gfx = this.scene.add.graphics();
       gfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
-      gfx.lineStyle(3, 0xeeeeff, 0.95);
+      gfx.lineStyle(4, 0xeeeeff, 0.95);
       const start = dir > 0 ? -0.8 : Math.PI - 1.2;
       gfx.beginPath();
-      gfx.arc(cx, cy, 20, start, start + 2.0);
+      gfx.arc(cx, cy, 30, start, start + 2.2);
       gfx.strokePath();
       // Secondary thinner trail
-      gfx.lineStyle(1, color, 0.6);
+      gfx.lineStyle(2, color, 0.6);
       gfx.beginPath();
-      gfx.arc(cx, cy, 22, start + 0.2, start + 1.8);
-      gfx.strokePath();
-
-      this.scene.tweens.add({
-        targets: gfx, alpha: 0, duration: 180,
-        onComplete: () => gfx.destroy(),
-      });
-
-      // Small spark particles
-      const sparks = this.scene.add.particles(cx, cy, 'vfx_pixel', {
-        speed: { min: 20, max: 40 },
-        angle: dir > 0 ? { min: -40, max: 40 } : { min: 140, max: 220 },
-        lifespan: 150, tint: 0xccccdd,
-        alpha: { start: 0.8, end: 0 },
-        emitting: false,
-      });
-      sparks.setDepth(GAME_CONFIG.layers.foregroundDecor);
-      sparks.explode(4);
-      this.scene.time.delayedCall(200, () => sparks.destroy());
-
-    } else if (combo === 1) {
-      // Hit 2 — reverse backhand, bigger arc + wind trail
-      const gfx = this.scene.add.graphics();
-      gfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
-      // Main arc (reversed direction for backhand feel)
-      gfx.lineStyle(3, 0xffffff, 1.0);
-      const start = dir > 0 ? 0.5 : Math.PI - 2.5;
-      gfx.beginPath();
-      gfx.arc(cx - dir * 4, cy - 2, 24, start, start + 2.4);
-      gfx.strokePath();
-      // Outer glow
-      gfx.lineStyle(2, color, 0.5);
-      gfx.beginPath();
-      gfx.arc(cx - dir * 4, cy - 2, 27, start + 0.3, start + 2.1);
+      gfx.arc(cx, cy, 34, start + 0.2, start + 2.0);
       gfx.strokePath();
 
       this.scene.tweens.add({
@@ -243,78 +246,208 @@ export class VFXSystem {
         onComplete: () => gfx.destroy(),
       });
 
-      // Wind trail particles
-      const wind = this.scene.add.particles(cx, cy, 'vfx_pixel', {
+      // Spark particles
+      const sparks = this.scene.add.particles(cx, cy, 'vfx_pixel', {
         speed: { min: 30, max: 60 },
-        angle: dir > 0 ? { min: -50, max: 50 } : { min: 130, max: 230 },
-        lifespan: 200, tint: 0xaabbcc,
-        alpha: { start: 0.7, end: 0 },
+        angle: dir > 0 ? { min: -40, max: 40 } : { min: 140, max: 220 },
+        lifespan: 200, tint: 0xccccdd,
+        alpha: { start: 0.9, end: 0 },
         emitting: false,
       });
-      wind.setDepth(GAME_CONFIG.layers.foregroundDecor);
-      wind.explode(6);
-      this.scene.time.delayedCall(250, () => wind.destroy());
+      sparks.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      sparks.explode(6);
+      this.scene.time.delayedCall(250, () => sparks.destroy());
 
-      // Small screen shake for impact
-      this.scene.cameras.main.shake(50, 0.002);
+      // Screen shake on every hit
+      this.scene.cameras.main.shake(60, 0.003);
 
-    } else {
-      // Hit 3 — MASSIVE overhead finisher, multiple layered arcs
+    } else if (combo === 1) {
+      // Hit 2 — reverse backhand, even bigger arc + wind trail
       const gfx = this.scene.add.graphics();
       gfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
-
-      // Thick white core arc
+      // Main arc (reversed direction for backhand feel)
       gfx.lineStyle(4, 0xffffff, 1.0);
-      const start = dir > 0 ? -1.8 : Math.PI - 1.0;
+      const start = dir > 0 ? 0.5 : Math.PI - 2.5;
       gfx.beginPath();
-      gfx.arc(cx + dir * 4, cy - 4, 30, start, start + 2.8);
+      gfx.arc(cx - dir * 4, cy - 2, 34, start, start + 2.6);
       gfx.strokePath();
-
-      // Blue-white outer glow
-      gfx.lineStyle(2, 0x88bbff, 0.7);
+      // Outer glow
+      gfx.lineStyle(2, color, 0.5);
       gfx.beginPath();
-      gfx.arc(cx + dir * 4, cy - 4, 34, start + 0.2, start + 2.6);
-      gfx.strokePath();
-
-      // Inner hot core
-      gfx.lineStyle(2, 0xffeedd, 0.6);
-      gfx.beginPath();
-      gfx.arc(cx + dir * 4, cy - 4, 26, start + 0.4, start + 2.4);
+      gfx.arc(cx - dir * 4, cy - 2, 38, start + 0.3, start + 2.3);
       gfx.strokePath();
 
       this.scene.tweens.add({
-        targets: gfx, alpha: 0, duration: 250,
+        targets: gfx, alpha: 0, duration: 220,
         onComplete: () => gfx.destroy(),
       });
 
-      // Horizontal slash line extending far
-      const line = this.scene.add.graphics();
-      line.setDepth(GAME_CONFIG.layers.foregroundDecor);
-      line.lineStyle(2, 0xffffff, 0.8);
-      line.beginPath();
-      line.moveTo(owner.x - dir * 5, cy);
-      line.lineTo(owner.x + dir * 45, cy);
-      line.strokePath();
-      this.scene.tweens.add({
-        targets: line, alpha: 0, duration: 200,
-        onComplete: () => line.destroy(),
-      });
-
-      // Big particle burst
-      const burst = this.scene.add.particles(cx, cy, 'vfx_pixel_4', {
-        speed: { min: 40, max: 90 },
-        angle: dir > 0 ? { min: -60, max: 60 } : { min: 120, max: 240 },
-        lifespan: 300, tint: 0xccddff,
-        alpha: { start: 1, end: 0 },
-        gravityY: 40,
+      // Wind trail particles
+      const wind = this.scene.add.particles(cx, cy, 'vfx_pixel', {
+        speed: { min: 40, max: 80 },
+        angle: dir > 0 ? { min: -50, max: 50 } : { min: 130, max: 230 },
+        lifespan: 250, tint: 0xaabbcc,
+        alpha: { start: 0.8, end: 0 },
         emitting: false,
       });
-      burst.setDepth(GAME_CONFIG.layers.foregroundDecor);
-      burst.explode(10);
-      this.scene.time.delayedCall(350, () => burst.destroy());
+      wind.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      wind.explode(8);
+      this.scene.time.delayedCall(300, () => wind.destroy());
 
-      // Screen shake — big impact
-      this.scene.cameras.main.shake(120, 0.005);
+      // Screen shake for impact
+      this.scene.cameras.main.shake(80, 0.004);
+
+    } else {
+      // Hit 3 — GROUND SLAM FINISHER — sword smashes into the earth
+      const slamX = owner.x + dir * 20;
+      const slamY = owner.groundY;
+
+      // ── Impact flash (white circle that expands and fades) ──
+      const flash = this.scene.add.graphics();
+      flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      flash.fillStyle(0xffffff, 0.9);
+      flash.fillCircle(slamX, slamY - 8, 8);
+      this.scene.tweens.add({
+        targets: flash,
+        scaleX: 6, scaleY: 3,
+        alpha: 0,
+        duration: 300,
+        ease: 'Power2',
+        onComplete: () => flash.destroy(),
+      });
+
+      // ── Ground crack lines radiating outward ──
+      const crackColors = [0xffddaa, 0xffcc77, 0xeebb66];
+      for (let i = 0; i < 10; i++) {
+        const crack = this.scene.add.graphics();
+        crack.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        const angle = (i / 10) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+        const len = 20 + Math.random() * 40;
+        const endX = slamX + Math.cos(angle) * len;
+        const endY = slamY + Math.sin(angle) * len * 0.4; // Flatten for 2.5D
+        const midX = slamX + Math.cos(angle) * len * 0.5 + (Math.random() - 0.5) * 8;
+        const midY = slamY + Math.sin(angle) * len * 0.25 + (Math.random() - 0.5) * 3;
+
+        const clr = crackColors[Math.floor(Math.random() * crackColors.length)];
+        crack.lineStyle(2, clr, 0.9);
+        crack.beginPath();
+        crack.moveTo(slamX, slamY);
+        crack.lineTo(midX, midY);
+        crack.lineTo(endX, endY);
+        crack.strokePath();
+
+        // Glow line underneath
+        crack.lineStyle(4, 0xff8833, 0.3);
+        crack.beginPath();
+        crack.moveTo(slamX, slamY);
+        crack.lineTo(midX, midY);
+        crack.lineTo(endX, endY);
+        crack.strokePath();
+
+        this.scene.tweens.add({
+          targets: crack,
+          alpha: 0,
+          duration: 500 + Math.random() * 300,
+          delay: 50,
+          onComplete: () => crack.destroy(),
+        });
+      }
+
+      // ── Rock/debris chunks flying upward ──
+      const rockColors = [0x887766, 0x665544, 0x998877, 0x554433, 0xaa9988];
+      for (let i = 0; i < 14; i++) {
+        const rock = this.scene.add.graphics();
+        rock.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+        const rc = rockColors[Math.floor(Math.random() * rockColors.length)];
+        const size = 1 + Math.random() * 4;
+        rock.fillStyle(rc, 1);
+        rock.fillRect(-size / 2, -size / 2, size, size);
+        rock.setPosition(slamX + (Math.random() - 0.5) * 30, slamY);
+
+        const throwAngle = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.8;
+        const throwSpeed = 40 + Math.random() * 100;
+        const dur = 400 + Math.random() * 500;
+        const t = dur / 1000;
+        const endRX = rock.x + Math.cos(throwAngle) * throwSpeed * t;
+        const peakRY = rock.y + Math.sin(throwAngle) * throwSpeed * t * 0.4;
+        const endRY = rock.y + 10 + Math.random() * 20;
+
+        this.scene.tweens.add({
+          targets: rock,
+          x: endRX,
+          angle: Phaser.Math.Between(-360, 360),
+          duration: dur,
+          ease: 'Linear',
+        });
+        this.scene.tweens.add({
+          targets: rock,
+          y: peakRY,
+          duration: dur * 0.35,
+          ease: 'Quad.easeOut',
+          onComplete: () => {
+            this.scene.tweens.add({
+              targets: rock,
+              y: endRY,
+              duration: dur * 0.65,
+              ease: 'Quad.easeIn',
+            });
+          },
+        });
+        this.scene.tweens.add({
+          targets: rock,
+          alpha: 0,
+          delay: dur * 0.5,
+          duration: dur * 0.5,
+          onComplete: () => rock.destroy(),
+        });
+      }
+
+      // ── Dust cloud (expanding ellipse at ground level) ──
+      const dust = this.scene.add.graphics();
+      dust.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      dust.fillStyle(0x998877, 0.4);
+      dust.fillCircle(slamX, slamY, 10);
+      this.scene.tweens.add({
+        targets: dust,
+        scaleX: 8,
+        scaleY: 2.5,
+        alpha: 0,
+        duration: 600,
+        ease: 'Power1',
+        onComplete: () => dust.destroy(),
+      });
+
+      // ── Shockwave ring ──
+      const ring = this.scene.add.graphics();
+      ring.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      ring.lineStyle(3, 0xffeedd, 0.8);
+      ring.strokeCircle(slamX, slamY - 4, 6);
+      this.scene.tweens.add({
+        targets: ring,
+        scaleX: 8,
+        scaleY: 3,
+        alpha: 0,
+        duration: 400,
+        ease: 'Power2',
+        onComplete: () => ring.destroy(),
+      });
+
+      // ── Spark particles ──
+      const sparks = this.scene.add.particles(slamX, slamY - 4, 'vfx_pixel_4', {
+        speed: { min: 50, max: 120 },
+        angle: { min: 0, max: 360 },
+        lifespan: 400,
+        tint: [0xffcc44, 0xffaa22, 0xffffff],
+        alpha: { start: 1, end: 0 },
+        gravityY: 80,
+        emitting: false,
+      });
+      sparks.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      sparks.explode(16);
+      this.scene.time.delayedCall(500, () => sparks.destroy());
+
+      // ── BIG screen shake ──
+      this.scene.cameras.main.shake(200, 0.012);
     }
   }
 
@@ -338,6 +471,815 @@ export class VFXSystem {
         onComplete: () => gfx.destroy(),
       });
     }
+  }
+
+  // ─── MAGE SPELL VFX ──────────────────────────────────────
+
+  /**
+   * Arcane Missiles — homing purple bolts streaking to enemies.
+   */
+  spawnArcaneMissiles(player) {
+    if (!this.scene || !player) return;
+    const dir = player.facingRight ? 1 : -1;
+    const count = 5;
+    for (let i = 0; i < count; i++) {
+      this.scene.time.delayedCall(i * 120, () => {
+        const bolt = this.scene.add.graphics();
+        bolt.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+        bolt.fillStyle(0xaa66ff, 1);
+        bolt.fillCircle(0, 0, 3);
+        bolt.fillStyle(0xddaaff, 0.8);
+        bolt.fillCircle(0, 0, 1.5);
+        const sx = player.x + dir * 10;
+        const sy = player.groundY - 14 + (Math.random() - 0.5) * 8;
+        bolt.setPosition(sx, sy);
+
+        // Trail
+        const trail = this.scene.add.graphics();
+        trail.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        trail.lineStyle(2, 0x8844cc, 0.5);
+
+        const endX = sx + dir * (80 + Math.random() * 40);
+        const endY = sy + (Math.random() - 0.5) * 20;
+        this.scene.tweens.add({
+          targets: bolt,
+          x: endX, y: endY,
+          duration: 250,
+          ease: 'Quad.easeIn',
+          onUpdate: () => {
+            trail.clear();
+            trail.lineStyle(2, 0x8844cc, 0.4);
+            trail.beginPath();
+            trail.moveTo(sx, sy);
+            trail.lineTo(bolt.x, bolt.y);
+            trail.strokePath();
+          },
+          onComplete: () => {
+            // Impact burst
+            const impact = this.scene.add.graphics();
+            impact.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+            impact.fillStyle(0xcc88ff, 0.8);
+            impact.fillCircle(endX, endY, 4);
+            this.scene.tweens.add({
+              targets: impact, alpha: 0, scaleX: 3, scaleY: 3,
+              duration: 150, onComplete: () => impact.destroy(),
+            });
+            bolt.destroy();
+            trail.destroy();
+          },
+        });
+      });
+    }
+  }
+
+  /**
+   * Comet Crash — massive fiery comet falling from the sky.
+   */
+  spawnCometCrash(player) {
+    if (!this.scene || !player) return;
+    const dir = player.facingRight ? 1 : -1;
+    const impactX = player.x + dir * 60;
+    const impactY = player.groundY;
+
+    // Shadow/target circle on ground
+    const shadow = this.scene.add.graphics();
+    shadow.setDepth(GAME_CONFIG.layers.entities + impactY - 1);
+    shadow.fillStyle(0xff4422, 0.2);
+    shadow.fillCircle(0, 0, 4);
+    shadow.setPosition(impactX, impactY);
+    this.scene.tweens.add({
+      targets: shadow,
+      scaleX: 8, scaleY: 4,
+      alpha: 0.6,
+      duration: 500,
+      ease: 'Quad.easeIn',
+      onComplete: () => shadow.destroy(),
+    });
+
+    // Comet falling from top
+    const comet = this.scene.add.graphics();
+    comet.setDepth(GAME_CONFIG.layers.foregroundDecor + 5);
+    comet.fillStyle(0xff6644, 1);
+    comet.fillCircle(0, 0, 8);
+    comet.fillStyle(0xffcc44, 0.9);
+    comet.fillCircle(0, 0, 5);
+    comet.fillStyle(0xffffff, 0.8);
+    comet.fillCircle(0, 0, 2);
+    comet.setPosition(impactX + dir * 60, impactY - 180);
+
+    this.scene.tweens.add({
+      targets: comet,
+      x: impactX, y: impactY - 8,
+      duration: 500,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        comet.destroy();
+
+        // EXPLOSION
+        const flash = this.scene.add.graphics();
+        flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 5);
+        flash.fillStyle(0xffffff, 1);
+        flash.fillCircle(impactX, impactY - 4, 12);
+        this.scene.tweens.add({
+          targets: flash, alpha: 0, scaleX: 5, scaleY: 3,
+          duration: 300, onComplete: () => flash.destroy(),
+        });
+
+        // Fire ring
+        const ring = this.scene.add.graphics();
+        ring.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+        ring.lineStyle(4, 0xff6644, 0.9);
+        ring.strokeCircle(impactX, impactY, 8);
+        this.scene.tweens.add({
+          targets: ring, scaleX: 6, scaleY: 3, alpha: 0,
+          duration: 400, onComplete: () => ring.destroy(),
+        });
+
+        // Debris
+        for (let i = 0; i < 16; i++) {
+          const chunk = this.scene.add.graphics();
+          chunk.setDepth(GAME_CONFIG.layers.foregroundDecor + 4);
+          const c = [0xff4422, 0xff8844, 0xffcc44, 0x887766][i % 4];
+          chunk.fillStyle(c, 1);
+          chunk.fillCircle(0, 0, 1 + Math.random() * 3);
+          chunk.setPosition(impactX, impactY);
+          const angle = (i / 16) * Math.PI * 2;
+          const speed = 30 + Math.random() * 80;
+          this.scene.tweens.add({
+            targets: chunk,
+            x: impactX + Math.cos(angle) * speed,
+            y: impactY + Math.sin(angle) * speed * 0.5 - Math.random() * 20,
+            alpha: 0, duration: 400 + Math.random() * 300,
+            onComplete: () => chunk.destroy(),
+          });
+        }
+
+        // Sparks
+        const sparks = this.scene.add.particles(impactX, impactY, 'vfx_pixel_4', {
+          speed: { min: 60, max: 150 }, angle: { min: 0, max: 360 },
+          lifespan: 400, tint: [0xff4422, 0xff8844, 0xffcc44],
+          alpha: { start: 1, end: 0 }, gravityY: 80, emitting: false,
+        });
+        sparks.setDepth(GAME_CONFIG.layers.foregroundDecor + 4);
+        sparks.explode(20);
+        this.scene.time.delayedCall(500, () => sparks.destroy());
+
+        this.scene.cameras.main.shake(250, 0.015);
+      },
+    });
+
+    // Comet trail
+    this.scene.time.addEvent({
+      delay: 30, repeat: 15,
+      callback: () => {
+        if (!comet || !comet.active || !this.scene) return;
+        const trail = this.scene.add.graphics();
+        trail.setDepth(GAME_CONFIG.layers.foregroundDecor + 4);
+        trail.fillStyle(0xff8844, 0.6);
+        trail.fillCircle(comet.x + (Math.random() - 0.5) * 4, comet.y + (Math.random() - 0.5) * 4, 2 + Math.random() * 3);
+        this.scene.tweens.add({
+          targets: trail, alpha: 0, scaleX: 0.3, scaleY: 0.3,
+          duration: 200, onComplete: () => trail.destroy(),
+        });
+      },
+    });
+  }
+
+  /**
+   * Blink — vanish + reappear sparkle effect.
+   */
+  spawnBlinkEffect(player) {
+    if (!this.scene || !player) return;
+    const sx = player.x;
+    const sy = player.groundY;
+
+    // Departure burst
+    for (let i = 0; i < 12; i++) {
+      const p = this.scene.add.graphics();
+      p.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      p.fillStyle(0x8866ff, 0.9);
+      p.fillCircle(0, 0, 1 + Math.random() * 2);
+      p.setPosition(sx, sy - 10);
+      const angle = (i / 12) * Math.PI * 2;
+      this.scene.tweens.add({
+        targets: p,
+        x: sx + Math.cos(angle) * 20,
+        y: sy - 10 + Math.sin(angle) * 12,
+        alpha: 0, duration: 300,
+        onComplete: () => p.destroy(),
+      });
+    }
+
+    // Arrival sparkles (delayed slightly)
+    this.scene.time.delayedCall(100, () => {
+      if (!this.scene || !player || !player.scene) return;
+      for (let i = 0; i < 8; i++) {
+        const p = this.scene.add.graphics();
+        p.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        p.fillStyle(0xaa88ff, 0.9);
+        p.fillCircle(0, 0, 1 + Math.random() * 2);
+        p.setPosition(player.x + (Math.random() - 0.5) * 16, player.groundY - 10 + (Math.random() - 0.5) * 10);
+        this.scene.tweens.add({
+          targets: p, alpha: 0, y: p.y - 8, scaleX: 2, scaleY: 2,
+          duration: 250, onComplete: () => p.destroy(),
+        });
+      }
+    });
+  }
+
+  /**
+   * Frost Nova — expanding ice ring that freezes.
+   */
+  spawnFrostNova(player) {
+    if (!this.scene || !player) return;
+    const cx = player.x;
+    const cy = player.groundY;
+
+    // Inner flash
+    const flash = this.scene.add.graphics();
+    flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    flash.fillStyle(0xaaddff, 0.8);
+    flash.fillCircle(cx, cy - 6, 6);
+    this.scene.tweens.add({
+      targets: flash, alpha: 0, scaleX: 6, scaleY: 3,
+      duration: 400, onComplete: () => flash.destroy(),
+    });
+
+    // Ice ring expanding
+    const ring = this.scene.add.graphics();
+    ring.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    ring.lineStyle(3, 0x88ccff, 0.9);
+    ring.strokeCircle(cx, cy, 6);
+    this.scene.tweens.add({
+      targets: ring, scaleX: 8, scaleY: 4, alpha: 0,
+      duration: 500, ease: 'Power2', onComplete: () => ring.destroy(),
+    });
+
+    // Second ring
+    const ring2 = this.scene.add.graphics();
+    ring2.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    ring2.lineStyle(2, 0xcceeFF, 0.7);
+    ring2.strokeCircle(cx, cy, 8);
+    this.scene.tweens.add({
+      targets: ring2, scaleX: 6, scaleY: 3, alpha: 0, delay: 80,
+      duration: 450, onComplete: () => ring2.destroy(),
+    });
+
+    // Ice crystal shards
+    for (let i = 0; i < 10; i++) {
+      const shard = this.scene.add.graphics();
+      shard.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      shard.fillStyle(0xcceeFF, 0.9);
+      const h = 3 + Math.random() * 4;
+      shard.fillTriangle(0, -h, -2, h, 2, h);
+      shard.setPosition(cx, cy);
+      const angle = (i / 10) * Math.PI * 2;
+      const dist = 25 + Math.random() * 25;
+      this.scene.tweens.add({
+        targets: shard,
+        x: cx + Math.cos(angle) * dist,
+        y: cy + Math.sin(angle) * dist * 0.4,
+        angle: Phaser.Math.Between(-90, 90),
+        alpha: 0, duration: 500, delay: 50,
+        onComplete: () => shard.destroy(),
+      });
+    }
+
+    // Ground frost circle
+    const frost = this.scene.add.graphics();
+    frost.setDepth(GAME_CONFIG.layers.entities + cy - 1);
+    frost.fillStyle(0x88bbff, 0.3);
+    frost.fillCircle(cx, cy, 40);
+    frost.setScale(1, 0.5);
+    this.scene.tweens.add({
+      targets: frost, alpha: 0, delay: 800, duration: 1500,
+      onComplete: () => frost.destroy(),
+    });
+
+    this.scene.cameras.main.shake(100, 0.006);
+  }
+
+  /**
+   * Disintegrate — start of the channeled beam.
+   */
+  spawnDisintegrateStart(player) {
+    if (!this.scene || !player) return;
+    const dir = player.facingRight ? 1 : -1;
+    // Charge-up glow on hands
+    const glow = this.scene.add.graphics();
+    glow.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    glow.fillStyle(0xff44aa, 0.8);
+    glow.fillCircle(0, 0, 3);
+    glow.setPosition(player.x + dir * 12, player.groundY - 14);
+    this.scene.tweens.add({
+      targets: glow, scaleX: 4, scaleY: 4, alpha: 0,
+      duration: 300, onComplete: () => glow.destroy(),
+    });
+  }
+
+  /**
+   * Meteor Storm — individual meteor impact VFX.
+   */
+  onMeteorImpact(data) {
+    if (!this.scene) return;
+    const { x, y } = data;
+
+    // Meteor falling
+    const meteor = this.scene.add.graphics();
+    meteor.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+    meteor.fillStyle(0xff6633, 1);
+    meteor.fillCircle(0, 0, 5);
+    meteor.fillStyle(0xffaa44, 0.8);
+    meteor.fillCircle(0, 0, 3);
+    meteor.setPosition(x + Phaser.Math.Between(-20, 20), y - 100);
+
+    this.scene.tweens.add({
+      targets: meteor, x: x, y: y - 4,
+      duration: 200, ease: 'Quad.easeIn',
+      onComplete: () => {
+        meteor.destroy();
+        // Impact flash
+        const flash = this.scene.add.graphics();
+        flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+        flash.fillStyle(0xffaa33, 0.9);
+        flash.fillCircle(x, y, 6);
+        this.scene.tweens.add({
+          targets: flash, alpha: 0, scaleX: 4, scaleY: 2,
+          duration: 250, onComplete: () => flash.destroy(),
+        });
+
+        // Sparks
+        for (let i = 0; i < 6; i++) {
+          const s = this.scene.add.graphics();
+          s.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+          s.fillStyle([0xff4422, 0xff8844, 0xffcc44][i % 3], 1);
+          s.fillCircle(0, 0, 1 + Math.random());
+          s.setPosition(x, y);
+          this.scene.tweens.add({
+            targets: s,
+            x: x + (Math.random() - 0.5) * 40,
+            y: y - Math.random() * 20,
+            alpha: 0, duration: 250,
+            onComplete: () => s.destroy(),
+          });
+        }
+        this.scene.cameras.main.shake(60, 0.004);
+      },
+    });
+  }
+
+  /**
+   * Chain Lightning — electric arcs between points.
+   */
+  onChainLightning(data) {
+    if (!this.scene) return;
+    const { points } = data;
+    if (!points || points.length < 2) return;
+
+    for (let i = 0; i < points.length - 1; i++) {
+      this.scene.time.delayedCall(i * 60, () => {
+        const a = points[i];
+        const b = points[i + 1];
+        if (!a || !b) return;
+
+        // Jagged lightning bolt
+        const bolt = this.scene.add.graphics();
+        bolt.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+
+        // Main bright bolt
+        bolt.lineStyle(3, 0x88ccff, 1);
+        bolt.beginPath();
+        bolt.moveTo(a.x, a.y);
+        const segments = 4 + Math.floor(Math.random() * 3);
+        for (let s = 1; s < segments; s++) {
+          const t = s / segments;
+          const mx = a.x + (b.x - a.x) * t + (Math.random() - 0.5) * 12;
+          const my = a.y + (b.y - a.y) * t + (Math.random() - 0.5) * 8;
+          bolt.lineTo(mx, my);
+        }
+        bolt.lineTo(b.x, b.y);
+        bolt.strokePath();
+
+        // Glow
+        bolt.lineStyle(6, 0x4488ff, 0.3);
+        bolt.beginPath();
+        bolt.moveTo(a.x, a.y);
+        bolt.lineTo(b.x, b.y);
+        bolt.strokePath();
+
+        // Impact flash at target
+        const flash = this.scene.add.graphics();
+        flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+        flash.fillStyle(0xaaddff, 0.9);
+        flash.fillCircle(b.x, b.y, 4);
+        this.scene.tweens.add({
+          targets: flash, alpha: 0, scaleX: 3, scaleY: 3,
+          duration: 150, onComplete: () => flash.destroy(),
+        });
+
+        this.scene.tweens.add({
+          targets: bolt, alpha: 0, duration: 200,
+          onComplete: () => bolt.destroy(),
+        });
+      });
+    }
+  }
+
+  /**
+   * Time Warp — expanding purple time distortion field.
+   */
+  onTimeWarp(data) {
+    if (!this.scene) return;
+    const { player, duration, radius } = data;
+    if (!player) return;
+
+    // Distortion ring
+    const ring = this.scene.add.graphics();
+    ring.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    ring.lineStyle(2, 0x6644cc, 0.6);
+    ring.strokeCircle(player.x, player.groundY, 10);
+    this.scene.tweens.add({
+      targets: ring, scaleX: 8, scaleY: 4, alpha: 0.3,
+      duration: 600, ease: 'Power2',
+    });
+
+    // Pulsing field that persists
+    const field = this.scene.add.graphics();
+    field.setDepth(GAME_CONFIG.layers.entities + player.groundY - 1);
+    field.fillStyle(0x6644cc, 0.15);
+    field.fillCircle(player.x, player.groundY, radius || 80);
+    field.setScale(1, 0.5);
+
+    // Clock tick particles
+    const tickEvent = this.scene.time.addEvent({
+      delay: 300, repeat: Math.floor(duration / 300),
+      callback: () => {
+        for (let i = 0; i < 3; i++) {
+          const p = this.scene.add.graphics();
+          p.setDepth(GAME_CONFIG.layers.foregroundDecor);
+          p.fillStyle(0x8866ff, 0.7);
+          p.fillCircle(0, 0, 1);
+          p.setPosition(
+            player.x + (Math.random() - 0.5) * 100,
+            player.groundY + (Math.random() - 0.5) * 40,
+          );
+          this.scene.tweens.add({
+            targets: p, y: p.y - 8, alpha: 0,
+            duration: 400, onComplete: () => p.destroy(),
+          });
+        }
+      },
+    });
+
+    // Fade out field and ring after duration
+    this.scene.time.delayedCall(duration, () => {
+      this.scene.tweens.add({
+        targets: [field, ring], alpha: 0, duration: 500,
+        onComplete: () => { field.destroy(); ring.destroy(); },
+      });
+      tickEvent.destroy();
+    });
+
+    this.scene.cameras.main.shake(80, 0.003);
+  }
+
+  // ─── ENEMY TELEGRAPH VFX ──────────────────────────────────
+
+  /**
+   * Small telegraph — red flash under enemy before imp/trash attack.
+   */
+  spawnSmallTelegraph(enemy, duration) {
+    const gfx = this.scene.add.graphics();
+    gfx.setDepth(GAME_CONFIG.layers.entities + enemy.groundY - 1);
+    gfx.fillStyle(0xff4444, 0.3);
+    gfx.fillEllipse ? gfx.fillEllipse(0, 0, 20, 8) : gfx.fillCircle(0, 0, 8);
+    gfx.setPosition(enemy.x, enemy.groundY + 2);
+    gfx.setScale(0.3, 0.3);
+
+    this.scene.tweens.add({
+      targets: gfx,
+      scaleX: 1.2, scaleY: 1,
+      alpha: 0.6,
+      duration: duration * 0.8,
+      ease: 'Quad.easeIn',
+      yoyo: true,
+      onComplete: () => gfx.destroy(),
+    });
+
+    // Exclamation flash above head
+    const warn = this.scene.add.text(enemy.x, enemy.y - 28, '!', {
+      fontSize: '8px', fontFamily: 'monospace', color: '#ff4444',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(GAME_CONFIG.layers.ui).setResolution(4);
+    this.scene.tweens.add({
+      targets: warn,
+      y: enemy.y - 34,
+      alpha: 0,
+      duration: duration,
+      onComplete: () => warn.destroy(),
+    });
+  }
+
+  /**
+   * Heavy telegraph — ground glow + charging effect for elites.
+   */
+  spawnHeavyTelegraph(enemy, duration) {
+    const dir = enemy.facingRight ? 1 : -1;
+    const tx = enemy.x + dir * 16;
+
+    // Danger zone on ground
+    const zone = this.scene.add.graphics();
+    zone.setDepth(GAME_CONFIG.layers.entities + enemy.groundY - 1);
+    zone.fillStyle(0xff6600, 0.15);
+    zone.fillCircle(0, 0, 20);
+    zone.setPosition(tx, enemy.groundY);
+    zone.setScale(0.2);
+
+    this.scene.tweens.add({
+      targets: zone,
+      scaleX: 2.5, scaleY: 1.2,
+      alpha: 0.5,
+      duration: duration,
+      ease: 'Quad.easeIn',
+      onComplete: () => zone.destroy(),
+    });
+
+    // Weapon glow on enemy
+    const glow = this.scene.add.graphics();
+    glow.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    glow.fillStyle(0xff8844, 0.6);
+    glow.fillCircle(0, 0, 4);
+    glow.setPosition(enemy.x + dir * 10, enemy.groundY - 14);
+    this.scene.tweens.add({
+      targets: glow,
+      scaleX: 3, scaleY: 3,
+      alpha: 0,
+      duration: duration,
+      ease: 'Quad.easeIn',
+      onComplete: () => glow.destroy(),
+    });
+
+    // Warning text
+    const warn = this.scene.add.text(enemy.x, enemy.y - 32, '!!', {
+      fontSize: '9px', fontFamily: 'monospace', color: '#ff8844',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(GAME_CONFIG.layers.ui).setResolution(4);
+    this.scene.tweens.add({
+      targets: warn,
+      y: enemy.y - 38,
+      alpha: 0,
+      duration: duration,
+      onComplete: () => warn.destroy(),
+    });
+  }
+
+  /**
+   * Boss telegraph — massive danger zone + screen flash.
+   */
+  spawnBossTelegraph(enemy, duration) {
+    const dir = enemy.facingRight ? 1 : -1;
+
+    // Large danger area
+    const zone = this.scene.add.graphics();
+    zone.setDepth(GAME_CONFIG.layers.entities + enemy.groundY - 1);
+    zone.fillStyle(0xff2222, 0.1);
+    zone.fillCircle(0, 0, 30);
+    zone.setPosition(enemy.x + dir * 20, enemy.groundY);
+    zone.setScale(0.3);
+
+    this.scene.tweens.add({
+      targets: zone,
+      scaleX: 3, scaleY: 1.5,
+      alpha: 0.5,
+      duration: duration,
+      ease: 'Quad.easeIn',
+      onComplete: () => zone.destroy(),
+    });
+
+    // Pulsing body glow
+    const bodyGlow = this.scene.add.graphics();
+    bodyGlow.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    bodyGlow.fillStyle(0xff4444, 0.3);
+    bodyGlow.fillCircle(0, 0, 12);
+    bodyGlow.setPosition(enemy.x, enemy.groundY - 16);
+    this.scene.tweens.add({
+      targets: bodyGlow,
+      scaleX: 2.5, scaleY: 2.5,
+      alpha: 0,
+      duration: duration,
+      yoyo: false,
+      onComplete: () => bodyGlow.destroy(),
+    });
+
+    // Danger lines radiating outward
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const line = this.scene.add.graphics();
+      line.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      line.lineStyle(1, 0xff4444, 0.6);
+      line.beginPath();
+      line.moveTo(enemy.x, enemy.groundY - 10);
+      line.lineTo(enemy.x + Math.cos(angle) * 30, enemy.groundY - 10 + Math.sin(angle) * 15);
+      line.strokePath();
+      this.scene.tweens.add({
+        targets: line, alpha: 0, duration: duration,
+        onComplete: () => line.destroy(),
+      });
+    }
+  }
+
+  // ─── ENEMY ATTACK IMPACT VFX ───────────────────────────────
+
+  /**
+   * Imp/trash swipe — fast triple claw slash with sparks.
+   */
+  spawnImpSwipe(enemy, cx, cy, dir, color) {
+    // Triple claw marks — big and dramatic
+    for (let i = -1; i <= 1; i++) {
+      const gfx = this.scene.add.graphics();
+      gfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      gfx.lineStyle(2, color, 0.9);
+      const sx = cx - dir * 4;
+      const sy = cy + i * 5 - 4;
+      const ex = cx + dir * 16;
+      const ey = cy + i * 5 + 4;
+      gfx.beginPath();
+      gfx.moveTo(sx, sy);
+      gfx.lineTo(ex, ey);
+      gfx.strokePath();
+      // Glow line
+      gfx.lineStyle(4, color, 0.3);
+      gfx.beginPath();
+      gfx.moveTo(sx, sy);
+      gfx.lineTo(ex, ey);
+      gfx.strokePath();
+
+      this.scene.tweens.add({
+        targets: gfx, alpha: 0, duration: 200,
+        delay: i * 30 + 30,
+        onComplete: () => gfx.destroy(),
+      });
+    }
+
+    // Spark burst at impact
+    const sparks = this.scene.add.particles(cx + dir * 8, cy, 'vfx_pixel', {
+      speed: { min: 30, max: 70 },
+      angle: dir > 0 ? { min: -50, max: 50 } : { min: 130, max: 230 },
+      lifespan: 200,
+      tint: [color, 0xffaa44],
+      alpha: { start: 0.9, end: 0 },
+      emitting: false,
+    });
+    sparks.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    sparks.explode(5);
+    this.scene.time.delayedCall(250, () => sparks.destroy());
+  }
+
+  /**
+   * Elite heavy slam — big arc with ground impact and shockwave.
+   */
+  spawnHeavySlam(enemy, cx, cy, dir, color) {
+    // Massive overhead arc
+    const gfx = this.scene.add.graphics();
+    gfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    const start = dir > 0 ? -1.5 : Math.PI - 1.3;
+    gfx.lineStyle(4, 0xffffff, 0.9);
+    gfx.beginPath();
+    gfx.arc(cx, cy, 22, start, start + 2.6);
+    gfx.strokePath();
+    gfx.lineStyle(2, color, 0.6);
+    gfx.beginPath();
+    gfx.arc(cx, cy, 26, start + 0.2, start + 2.4);
+    gfx.strokePath();
+    this.scene.tweens.add({
+      targets: gfx, alpha: 0, duration: 250,
+      onComplete: () => gfx.destroy(),
+    });
+
+    // Ground impact ring at feet
+    const ring = this.scene.add.graphics();
+    ring.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    ring.lineStyle(2, color, 0.7);
+    ring.strokeCircle(cx, enemy.groundY, 4);
+    this.scene.tweens.add({
+      targets: ring,
+      scaleX: 5, scaleY: 2,
+      alpha: 0,
+      duration: 300,
+      onComplete: () => ring.destroy(),
+    });
+
+    // Debris chunks
+    for (let i = 0; i < 4; i++) {
+      const rock = this.scene.add.graphics();
+      rock.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      rock.fillStyle(0x887766, 1);
+      rock.fillRect(-1, -1, 2 + Math.random() * 2, 2 + Math.random() * 2);
+      rock.setPosition(cx + (Math.random() - 0.5) * 10, enemy.groundY);
+      const endY = enemy.groundY - 10 - Math.random() * 20;
+      this.scene.tweens.add({
+        targets: rock,
+        x: rock.x + (Math.random() - 0.5) * 30,
+        y: endY,
+        alpha: 0,
+        duration: 300 + Math.random() * 200,
+        ease: 'Quad.easeOut',
+        onComplete: () => rock.destroy(),
+      });
+    }
+
+    // Screen shake
+    this.scene.cameras.main.shake(80, 0.004);
+
+    // Spark burst
+    const sparks = this.scene.add.particles(cx, cy, 'vfx_pixel_4', {
+      speed: { min: 40, max: 80 },
+      angle: { min: 0, max: 360 },
+      lifespan: 250,
+      tint: [color, 0xffcc44],
+      alpha: { start: 1, end: 0 },
+      gravityY: 50,
+      emitting: false,
+    });
+    sparks.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    sparks.explode(8);
+    this.scene.time.delayedCall(300, () => sparks.destroy());
+  }
+
+  /**
+   * Boss cleave — massive sweeping attack with fire trail.
+   */
+  spawnBossCleave(enemy, cx, cy, dir, color) {
+    // Huge sweeping arc
+    const gfx = this.scene.add.graphics();
+    gfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    const start = dir > 0 ? -2.0 : Math.PI - 0.8;
+    gfx.lineStyle(5, 0xffffff, 1);
+    gfx.beginPath();
+    gfx.arc(cx, cy, 32, start, start + 2.8);
+    gfx.strokePath();
+    gfx.lineStyle(3, color, 0.7);
+    gfx.beginPath();
+    gfx.arc(cx, cy, 36, start + 0.2, start + 2.6);
+    gfx.strokePath();
+    gfx.lineStyle(2, 0xff8844, 0.4);
+    gfx.beginPath();
+    gfx.arc(cx, cy, 40, start + 0.4, start + 2.4);
+    gfx.strokePath();
+    this.scene.tweens.add({
+      targets: gfx, alpha: 0, duration: 300,
+      onComplete: () => gfx.destroy(),
+    });
+
+    // Fire trail along the arc
+    for (let i = 0; i < 8; i++) {
+      const a = start + (i / 8) * 2.8;
+      const fx = cx + Math.cos(a) * 34;
+      const fy = cy + Math.sin(a) * 34;
+      const flame = this.scene.add.graphics();
+      flame.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      flame.fillStyle([0xff4444, 0xff8844, 0xffcc44][i % 3], 0.8);
+      flame.fillCircle(0, 0, 2 + Math.random() * 2);
+      flame.setPosition(fx, fy);
+      this.scene.tweens.add({
+        targets: flame,
+        y: fy - 6 - Math.random() * 8,
+        alpha: 0,
+        scaleX: 2, scaleY: 2,
+        duration: 200 + Math.random() * 150,
+        onComplete: () => flame.destroy(),
+      });
+    }
+
+    // Ground shockwave
+    const ring = this.scene.add.graphics();
+    ring.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    ring.lineStyle(3, 0xff6644, 0.8);
+    ring.strokeCircle(enemy.x + dir * 10, enemy.groundY, 6);
+    this.scene.tweens.add({
+      targets: ring,
+      scaleX: 7, scaleY: 2.5,
+      alpha: 0,
+      duration: 400,
+      onComplete: () => ring.destroy(),
+    });
+
+    // Big spark burst
+    const sparks = this.scene.add.particles(cx, cy, 'vfx_pixel_4', {
+      speed: { min: 50, max: 120 },
+      angle: { min: 0, max: 360 },
+      lifespan: 350,
+      tint: [0xff4444, 0xff8844, 0xffcc44],
+      alpha: { start: 1, end: 0 },
+      gravityY: 60,
+      emitting: false,
+    });
+    sparks.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    sparks.explode(14);
+    this.scene.time.delayedCall(400, () => sparks.destroy());
+
+    // Heavy screen shake
+    this.scene.cameras.main.shake(150, 0.008);
   }
 
   /**
@@ -480,43 +1422,104 @@ export class VFXSystem {
   /**
    * Warrior Shield Bash — shockwave ring + radial force lines.
    */
-  spawnShieldBashWave(player) {
+  spawnShotgunBlast(player) {
     const dir = player.facingRight ? 1 : -1;
-    const cx = player.x + dir * 10;
-    const cy = player.groundY - 10;
+    const muzzleX = player.x + dir * 14;
+    const muzzleY = player.groundY - 12;
 
-    // Expanding ring
-    const ring = this.scene.add.circle(cx, cy, 6, 0x88aaff, 0.6);
-    ring.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    // ── Muzzle flash (bright white-yellow burst) ──
+    const flash = this.scene.add.graphics();
+    flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+    flash.fillStyle(0xffffcc, 1);
+    flash.fillCircle(muzzleX + dir * 4, muzzleY, 6);
+    flash.fillStyle(0xffaa33, 0.8);
+    flash.fillCircle(muzzleX + dir * 6, muzzleY, 10);
     this.scene.tweens.add({
-      targets: ring,
-      scaleX: 3.5,
-      scaleY: 3.5,
+      targets: flash,
       alpha: 0,
-      duration: 250,
-      onComplete: () => ring.destroy(),
+      scaleX: 2,
+      scaleY: 1.5,
+      duration: 100,
+      onComplete: () => flash.destroy(),
     });
 
-    // Radial force lines
-    for (let a = -0.6; a <= 0.6; a += 0.6) {
-      const gfx = this.scene.add.graphics();
-      gfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
-      gfx.lineStyle(2, 0xaaccff, 0.7);
-      const angle = (dir > 0 ? 0 : Math.PI) + a;
-      gfx.beginPath();
-      gfx.moveTo(cx, cy);
-      gfx.lineTo(cx + Math.cos(angle) * 12, cy + Math.sin(angle) * 6);
-      gfx.strokePath();
+    // ── Shotgun pellet trails (cone of lines) ──
+    const pelletCount = 8;
+    const spreadAngle = 0.5; // radians spread
+    const baseAngle = dir > 0 ? 0 : Math.PI;
+    for (let i = 0; i < pelletCount; i++) {
+      const angle = baseAngle + (Math.random() - 0.5) * spreadAngle;
+      const len = 40 + Math.random() * 50;
+      const endX = muzzleX + Math.cos(angle) * len;
+      const endY = muzzleY + Math.sin(angle) * len * 0.4;
 
+      // Pellet trail line
+      const trail = this.scene.add.graphics();
+      trail.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      trail.lineStyle(1, 0xffeeaa, 0.9);
+      trail.beginPath();
+      trail.moveTo(muzzleX, muzzleY);
+      trail.lineTo(endX, endY);
+      trail.strokePath();
       this.scene.tweens.add({
-        targets: gfx,
+        targets: trail,
         alpha: 0,
-        x: Math.cos(angle) * 8,
-        y: Math.sin(angle) * 4,
+        duration: 150 + Math.random() * 100,
+        onComplete: () => trail.destroy(),
+      });
+
+      // Small impact spark at pellet end
+      const spark = this.scene.add.graphics();
+      spark.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      spark.fillStyle(0xffcc44, 1);
+      spark.fillCircle(0, 0, 1 + Math.random() * 2);
+      spark.setPosition(endX, endY);
+      this.scene.tweens.add({
+        targets: spark,
+        alpha: 0,
+        scaleX: 2,
+        scaleY: 2,
         duration: 200,
-        onComplete: () => gfx.destroy(),
+        delay: 50,
+        onComplete: () => spark.destroy(),
       });
     }
+
+    // ── Smoke cloud from muzzle ──
+    for (let i = 0; i < 5; i++) {
+      const smoke = this.scene.add.graphics();
+      smoke.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      const gray = 0x888888 + Math.floor(Math.random() * 0x444444);
+      smoke.fillStyle(gray, 0.5);
+      smoke.fillCircle(0, 0, 3 + Math.random() * 4);
+      smoke.setPosition(muzzleX + dir * (Math.random() * 8), muzzleY + (Math.random() - 0.5) * 6);
+      this.scene.tweens.add({
+        targets: smoke,
+        x: smoke.x + dir * (10 + Math.random() * 15),
+        y: smoke.y - 3 - Math.random() * 5,
+        alpha: 0,
+        scaleX: 2,
+        scaleY: 2,
+        duration: 300 + Math.random() * 200,
+        onComplete: () => smoke.destroy(),
+      });
+    }
+
+    // ── Spark particles ──
+    const sparks = this.scene.add.particles(muzzleX, muzzleY, 'vfx_pixel', {
+      speed: { min: 60, max: 140 },
+      angle: dir > 0 ? { min: -30, max: 30 } : { min: 150, max: 210 },
+      lifespan: 200,
+      tint: [0xffcc44, 0xffaa22, 0xff8800],
+      alpha: { start: 1, end: 0 },
+      emitting: false,
+    });
+    sparks.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    sparks.explode(10);
+    this.scene.time.delayedCall(250, () => sparks.destroy());
+
+    // ── Screen shake — recoil ──
+    this.scene.cameras.main.shake(100, 0.008);
   }
 
   /**
@@ -1050,6 +2053,7 @@ export class VFXSystem {
   destroy() {
     this.scene.events.off('hitboxActive', this.onHitboxActive, this);
     this.scene.events.off('enemyAttack', this.onEnemyAttack, this);
+    this.scene.events.off('enemyWindup', this.onEnemyWindup, this);
     this.scene.events.off('aiAttack', this.onAIAttack, this);
     this.scene.events.off('playerSpecial', this.onPlayerSpecial, this);
     this.scene.events.off('aiHeal', this.onAIHeal, this);

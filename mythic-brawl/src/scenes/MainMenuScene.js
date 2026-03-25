@@ -52,6 +52,7 @@ export class MainMenuScene extends Phaser.Scene {
       { key: 'warrior', name: 'WARRIOR', role: 'Tank', color: '#8898b8' },
       { key: 'priest', name: 'PRIEST', role: 'Healer', color: '#90a8d8' },
       { key: 'rogue', name: 'ROGUE', role: 'DPS', color: '#cc6666' },
+      { key: 'mage', name: 'MAGE', role: 'Ranged DPS', color: '#aa66ff' },
     ];
 
     this.selectedIndex = 0;
@@ -280,7 +281,13 @@ export class MainMenuScene extends Phaser.Scene {
     const backBtn = this.add.text(width / 2, height * 0.80, '[ BACK ]', {
       fontSize: '10px', fontFamily: 'monospace', color: '#707090',
     }).setOrigin(0.5).setResolution(4).setDepth(11).setInteractive({ useHandCursor: true });
-    backBtn.on('pointerdown', () => this.showModeSelect());
+    backBtn.on('pointerdown', () => {
+      if (this.handleJoinKeydown) {
+        this.input.keyboard.off('keydown', this.handleJoinKeydown);
+        this.handleJoinKeydown = null;
+      }
+      this.showModeSelect();
+    });
     this.lobbyElements.push(backBtn);
 
     // Listen for typed characters
@@ -417,42 +424,96 @@ export class MainMenuScene extends Phaser.Scene {
     // Update player list from server state
     this.updateLobbyPlayers();
 
-    // Listen for player join/leave to update the list
-    nm.room.state.players.onAdd(() => this.updateLobbyPlayers());
-    nm.room.state.players.onRemove(() => this.updateLobbyPlayers());
+    // Use multiple approaches to catch player joins — schema listeners + broadcast + polling
+    try {
+      if (nm.room.state && nm.room.state.players) {
+        nm.room.state.players.onAdd(() => this.updateLobbyPlayers());
+        nm.room.state.players.onRemove(() => this.updateLobbyPlayers());
+      }
+    } catch (e) {
+      console.warn('Could not set onAdd/onRemove listeners:', e);
+    }
 
-    // Listen for game start
-    nm.onGameStarted((data) => {
+    // Broadcast message fallback
+    nm.onPlayerJoin(() => this.updateLobbyPlayers());
+    nm.onPlayerLeave(() => this.updateLobbyPlayers());
+
+    // Polling fallback — check every 500ms
+    const playerPoller = this.time.addEvent({
+      delay: 500,
+      loop: true,
+      callback: () => this.updateLobbyPlayers(),
+    });
+    this.lobbyElements.push({ destroy: () => playerPoller.remove() });
+
+    // Guard against double scene transition
+    this._transitioning = false;
+
+    // Prevent disconnect on scene shutdown when transitioning to game
+    this.isTransitioningToGame = false;
+    this.events.on('shutdown', () => {
+      if (!this.isTransitioningToGame && this.networkManager) {
+        this.networkManager.disconnect();
+      }
+    });
+
+    const startMultiplayerGame = (dungeonKey, keystoneLevel) => {
+      if (this._transitioning) return;
+      this._transitioning = true;
+      this.isTransitioningToGame = true;
       this.clearLobbyElements();
+      // Clear singleton callbacks before transitioning but do NOT disconnect
+      nm.onPlayerJoin(null);
+      nm.onPlayerLeave(null);
+      nm.onStateChange(null);
+      nm.onGameStarted(null);
       this.scene.start('DungeonScene', {
         playerClass: this.selectedClass,
-        dungeon: data.dungeonKey,
-        keystoneLevel: data.keystoneLevel,
+        dungeon: dungeonKey || 'deadmines',
+        keystoneLevel: keystoneLevel || 2,
         multiplayer: true,
         isHost: nm.isHost,
       });
+    };
+
+    // Listen for game start — broadcast message
+    nm.onGameStarted((data) => {
+      startMultiplayerGame(data.dungeonKey, data.keystoneLevel);
+    });
+
+    // Also watch for gamePhase state change as backup
+    nm.onStateChange((state) => {
+      if (state.gamePhase === 'playing' && this.menuPhase === 'lobby') {
+        startMultiplayerGame(state.dungeonKey, state.keystoneLevel);
+      }
     });
   }
 
   updateLobbyPlayers() {
-    if (!this.networkManager?.room?.state?.players || !this.playerSlotTexts) return;
+    if (!this.playerSlotTexts) return;
+    const players = this.networkManager?.room?.state?.players;
+    if (!players) return;
 
     const classColors = {
-      warrior: '#8898b8', priest: '#90a8d8', rogue: '#cc6666',
+      warrior: '#8898b8', priest: '#90a8d8', rogue: '#cc6666', mage: '#aa66ff',
     };
 
     let i = 0;
-    this.networkManager.room.state.players.forEach((player) => {
-      if (i >= this.playerSlotTexts.length) return;
-      const isLocal = this.networkManager.isLocalPlayer(player.id);
-      const hostMark = player.id === this.networkManager.room.state.players.keys().next().value ? ' (Host)' : '';
-      const youMark = isLocal ? ' ← YOU' : '';
-      this.playerSlotTexts[i].setText(
-        `${i + 1}. ${player.className.toUpperCase()}${hostMark}${youMark}`
-      );
-      this.playerSlotTexts[i].setColor(classColors[player.className] || '#b0b0c8');
-      i++;
-    });
+    try {
+      players.forEach((player) => {
+        if (i >= this.playerSlotTexts.length) return;
+        const isLocal = this.networkManager.isLocalPlayer(player.id);
+        const youMark = isLocal ? ' ← YOU' : '';
+        const hostMark = i === 0 ? ' (Host)' : '';
+        this.playerSlotTexts[i].setText(
+          `${i + 1}. ${player.className.toUpperCase()}${hostMark}${youMark}`
+        );
+        this.playerSlotTexts[i].setColor(classColors[player.className] || '#b0b0c8');
+        i++;
+      });
+    } catch (e) {
+      // State may not be fully synced yet
+    }
 
     // Clear remaining slots
     for (; i < this.playerSlotTexts.length; i++) {

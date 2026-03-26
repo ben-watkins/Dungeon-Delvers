@@ -34,17 +34,19 @@ export class NetworkManager {
     this._onGameStarted = null;
     this._onPlayerAbility = null;
     this._onHostMigrated = null;
+    this._onEnemyDamageRequest = null;
+    this._onRoomCleared = null;
+    this._onDungeonComplete = null;
   }
 
   async connect() {
     try {
       this.client = new Client(this.serverUrl);
-      this.isConnected = true;
-      console.log('Connected to multiplayer server');
+      // Note: Client constructor doesn't actually connect — connection happens on create/join
+      console.log('Colyseus client initialized:', this.serverUrl);
       return true;
     } catch (err) {
-      console.error('Failed to connect to server:', err);
-      this.isConnected = false;
+      console.error('Failed to initialize client:', err);
       return false;
     }
   }
@@ -62,12 +64,14 @@ export class NetworkManager {
       });
       this.localPlayerId = this.room.sessionId;
       this.isHost = true;
+      this.isConnected = true;
       this._setupRoomListeners();
       this._roomCode = roomCode;
       console.log(`Created room: ${roomCode}`);
       return this.room;
     } catch (err) {
       console.error('Failed to create room:', err);
+      this.isConnected = false;
       return null;
     }
   }
@@ -79,12 +83,14 @@ export class NetworkManager {
       this.room = await this.client.join('dungeon', { className, roomCode });
       this.localPlayerId = this.room.sessionId;
       this.isHost = false;
+      this.isConnected = true;
       this._roomCode = roomCode;
       this._setupRoomListeners();
       console.log(`Joined room: ${roomCode}`);
       return this.room;
     } catch (err) {
       console.error('Failed to join room:', err);
+      this.isConnected = false;
       return null;
     }
   }
@@ -127,6 +133,18 @@ export class NetworkManager {
       if (this._onHostMigrated) this._onHostMigrated(data);
     });
 
+    this.room.onMessage('applyEnemyDamage', (data) => {
+      if (this._onEnemyDamageRequest) this._onEnemyDamageRequest(data);
+    });
+
+    this.room.onMessage('roomCleared', (data) => {
+      if (this._onRoomCleared) this._onRoomCleared(data);
+    });
+
+    this.room.onMessage('dungeonComplete', (data) => {
+      if (this._onDungeonComplete) this._onDungeonComplete(data);
+    });
+
     this.room.onError((code, message) => {
       console.error(`Room error [${code}]:`, message);
     });
@@ -161,6 +179,36 @@ export class NetworkManager {
     this.room.send('startGame');
   }
 
+  sendEnemySync(enemies) {
+    if (!this.room || !this.isHost) return;
+    this.room.send('enemySync', { enemies });
+  }
+
+  sendEnemyDamage(enemyId, damage, knockbackX, knockbackY, hitstun) {
+    if (!this.room) return;
+    this.room.send('enemyDamage', { enemyId, damage, knockbackX, knockbackY, hitstun });
+  }
+
+  sendEnemySpawn(enemies) {
+    if (!this.room || !this.isHost) return;
+    this.room.send('enemySpawn', { enemies });
+  }
+
+  sendRoomCleared(roomIndex) {
+    if (!this.room || !this.isHost) return;
+    this.room.send('roomCleared', { roomIndex });
+  }
+
+  sendRoomAdvance(roomIndex) {
+    if (!this.room || !this.isHost) return;
+    this.room.send('roomAdvance', { roomIndex });
+  }
+
+  sendDungeonComplete(data) {
+    if (!this.room || !this.isHost) return;
+    this.room.send('dungeonComplete', data);
+  }
+
   /**
    * Get the room code for sharing.
    */
@@ -190,6 +238,9 @@ export class NetworkManager {
   onGameStarted(cb) { this._onGameStarted = cb; }
   onPlayerAbility(cb) { this._onPlayerAbility = cb; }
   onHostMigrated(cb) { this._onHostMigrated = cb; }
+  onEnemyDamageRequest(cb) { this._onEnemyDamageRequest = cb; }
+  onRoomCleared(cb) { this._onRoomCleared = cb; }
+  onDungeonComplete(cb) { this._onDungeonComplete = cb; }
 
   disconnect() {
     if (this.room) {
@@ -199,6 +250,17 @@ export class NetworkManager {
     this.isConnected = false;
     this.isHost = false;
     this.localPlayerId = null;
+    this._roomCode = null;
+    // Clear all callbacks to prevent references to destroyed scenes
+    this._onStateChange = null;
+    this._onPlayerJoin = null;
+    this._onPlayerLeave = null;
+    this._onGameStarted = null;
+    this._onPlayerAbility = null;
+    this._onHostMigrated = null;
+    this._onEnemyDamageRequest = null;
+    this._onRoomCleared = null;
+    this._onDungeonComplete = null;
   }
 }
 

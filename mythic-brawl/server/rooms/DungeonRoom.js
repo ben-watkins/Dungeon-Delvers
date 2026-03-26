@@ -71,6 +71,7 @@ defineTypes(DungeonState, {
   dungeonKey: 'string',
   keystoneLevel: 'number',
   roomCode: 'string',
+  hostId: 'string',
 });
 
 // --- Class stats (mirrors client config) ---
@@ -101,6 +102,7 @@ export class DungeonRoom extends Room {
     this.state.dungeonKey = options.dungeon || 'deadmines';
     this.state.keystoneLevel = options.keystoneLevel || 2;
     this.state.gamePhase = 'waiting';
+    this.state.hostId = '';
 
     // Track which classes are taken
     this.takenClasses = new Set();
@@ -134,6 +136,74 @@ export class DungeonRoom extends Room {
       });
     });
 
+    // Host broadcasts enemy state periodically
+    this.onMessage('enemySync', (client, data) => {
+      if (client.sessionId !== this.hostId) return;
+      for (const e of data.enemies) {
+        let es = this.state.enemies.get(e.id);
+        if (!es) {
+          es = new EnemyState();
+          es.id = e.id;
+          es.type = e.type;
+          es.maxHp = e.maxHp;
+          this.state.enemies.set(e.id, es);
+        }
+        es.x = e.x;
+        es.y = e.y;
+        es.groundY = e.groundY;
+        es.hp = e.hp;
+        es.state = e.state;
+        es.facingRight = e.facingRight;
+      }
+      const hostIds = new Set(data.enemies.map(e => e.id));
+      const toRemove = [];
+      this.state.enemies.forEach((_, key) => {
+        if (!hostIds.has(key)) toRemove.push(key);
+      });
+      toRemove.forEach(key => this.state.enemies.delete(key));
+    });
+
+    // Forward damage from any client to host
+    this.onMessage('enemyDamage', (client, data) => {
+      const hostClient = this.clients.find(c => c.sessionId === this.hostId);
+      if (hostClient) {
+        hostClient.send('applyEnemyDamage', { ...data, sourceId: client.sessionId });
+      }
+    });
+
+    // Host reports enemy spawn
+    this.onMessage('enemySpawn', (client, data) => {
+      if (client.sessionId !== this.hostId) return;
+      console.log(`Host spawned ${data.enemies.length} enemies in room ${this.state.roomCode}`);
+      this.state.enemies.clear();
+      for (const e of data.enemies) {
+        const es = new EnemyState();
+        es.id = e.id; es.type = e.type; es.x = e.x; es.y = e.y;
+        es.groundY = e.groundY; es.hp = e.hp; es.maxHp = e.maxHp;
+        es.state = 'idle'; es.facingRight = false;
+        this.state.enemies.set(e.id, es);
+      }
+    });
+
+    // Host reports room advance
+    this.onMessage('roomAdvance', (client, data) => {
+      if (client.sessionId !== this.hostId) return;
+      this.state.roomIndex = data.roomIndex;
+    });
+
+    // Host reports room cleared
+    this.onMessage('roomCleared', (client, data) => {
+      if (client.sessionId !== this.hostId) return;
+      this.broadcast('roomCleared', { roomIndex: data.roomIndex });
+    });
+
+    // Host reports dungeon complete
+    this.onMessage('dungeonComplete', (client, data) => {
+      if (client.sessionId !== this.hostId) return;
+      this.state.gamePhase = 'complete';
+      this.broadcast('dungeonComplete', data);
+    });
+
     // Set up the game loop
     this.setSimulationInterval((dt) => this.gameLoop(dt), 1000 / this.tickRate);
 
@@ -154,6 +224,7 @@ export class DungeonRoom extends Room {
     if (!this.hostId) {
       this.hostId = client.sessionId;
     }
+      this.state.hostId = this.hostId;
 
     // Create player state
     const stats = CLASS_STATS[assignedClass] || CLASS_STATS.warrior;
@@ -198,6 +269,7 @@ export class DungeonRoom extends Room {
       if (this.hostId) {
         this.broadcast('hostMigrated', { newHostId: this.hostId });
       }
+      if (this.hostId) this.state.hostId = this.hostId;
     }
 
     this.broadcast('playerLeft', { id: client.sessionId });
@@ -227,7 +299,9 @@ export class DungeonRoom extends Room {
     if (this.state.gamePhase !== 'playing') return;
 
     // Update timer
-    this.state.timer -= dt;
+    if (this.state.timer > 0) {
+      this.state.timer = Math.max(0, this.state.timer - dt);
+    }
 
     // Process player inputs — update positions server-side
     this.state.players.forEach((player, sessionId) => {

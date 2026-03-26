@@ -449,4 +449,19 @@ export class AICompanion extends Phaser.GameObjects.Container {
 
     this.setDepth(GAME_CONFIG.layers.entities + this.groundY);
   }
+
+  /**
+   * Revive from death — restore full HP, return to idle.
+   */
+  revive() {
+    if (!this.scene) return;
+    this.dead = false;
+    this.hp = this.maxHp;
+    this.knockbackVelocity = { x: 0, y: 0 };
+    this.sprite.setVisible(true);
+    this.sprite.setAlpha(1);
+    this.fsm.locked = false;
+    this.fsm.forceState('idle');
+    this.scene.events.emit('playerRevive', this);
+  }
 }

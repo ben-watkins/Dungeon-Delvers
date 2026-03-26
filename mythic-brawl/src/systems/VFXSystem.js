@@ -17,11 +17,20 @@ const CLASS_COLORS = {
   mage: 0xaa66ff,      // arcane purple — combo attacks glow purple
 };
 
-// Enemy swipe colors
+// Enemy swipe colors — themed per dungeon
 const ENEMY_COLORS = {
-  imp: 0xff6644,       // red-orange
-  hellknight: 0xff8844, // orange
-  pitlord: 0xff4444,   // blood red
+  imp: 0xff6644,            // red-orange
+  hellknight: 0xff8844,     // orange
+  pitlord: 0xff4444,        // blood red
+  frozen_wraith: 0x66ccff,  // ice blue
+  frozen_golem: 0x88ddff,   // frost
+  frozen_giant: 0x44aaff,   // deep ice
+  forge_imp: 0xff8833,      // ember
+  forge_golem: 0xff6611,    // molten
+  forge_infernal: 0xff4400, // magma
+  temple_murloc: 0x44dd88,  // sea green
+  temple_naga: 0x22cc66,    // deep sea
+  temple_horror: 0x8844cc,  // void purple
 };
 
 export class VFXSystem {
@@ -41,6 +50,38 @@ export class VFXSystem {
     scene.events.on('meteorImpact', this.onMeteorImpact, this);
     scene.events.on('chainLightning', this.onChainLightning, this);
     scene.events.on('timeWarp', this.onTimeWarp, this);
+
+    // Priest ability VFX events
+    scene.events.on('priestPenance', this.onPriestPenance, this);
+    scene.events.on('priestHymnHeal', this.onPriestHymnHeal, this);
+    scene.events.on('priestRadiance', this.onPriestRadiance, this);
+    scene.events.on('priestRadianceTick', this.onPriestRadianceTick, this);
+    scene.events.on('priestHolyFirePillar', this.onPriestHolyFirePillar, this);
+    scene.events.on('priestSpiritLink', this.onPriestSpiritLink, this);
+    scene.events.on('priestLightningSmite', this.onPriestLightningSmite, this);
+
+    // Raid boss ability VFX events
+    scene.events.on('raidBossTelegraph', this.onRaidBossTelegraph, this);
+    scene.events.on('raidBossHellfireDrop', this.onRaidBossHellfireDrop, this);
+    scene.events.on('raidBossHellfireImpact', this.onRaidBossHellfireImpact, this);
+    scene.events.on('raidBossShadowCleave', this.onRaidBossShadowCleave, this);
+    scene.events.on('raidBossFelStomp', this.onRaidBossFelStomp, this);
+    scene.events.on('raidBossChargeTrail', this.onRaidBossChargeTrail, this);
+    scene.events.on('raidBossChargeEnd', this.onRaidBossChargeEnd, this);
+    scene.events.on('raidBossTrailFade', this.onRaidBossTrailFade, this);
+
+    // Advanced enemy AI VFX events
+    scene.events.on('enemyDash', this.onEnemyDash, this);
+    scene.events.on('enemyDashEnd', this.onEnemyDashEnd, this);
+    scene.events.on('enemyAfterimage', this.onEnemyAfterimage, this);
+    scene.events.on('enemyJumpStart', this.onEnemyJumpStart, this);
+    scene.events.on('enemyJumpSlam', this.onEnemyJumpSlam, this);
+    scene.events.on('enemyDodge', this.onEnemyDodge, this);
+    scene.events.on('enemySpecial', this.onEnemySpecial, this);
+    scene.events.on('enemySwoop', this.onEnemySwoop, this);
+    scene.events.on('enemyFlyStart', this.onEnemyFlyStart, this);
+    scene.events.on('enemyFlyEnd', this.onEnemyFlyEnd, this);
+    scene.events.on('enemyEnrage', this.onEnemyEnrage, this);
   }
 
   // ─── EVENT HANDLERS ───────────────────────────────────────
@@ -2050,6 +2091,1618 @@ export class VFXSystem {
     this.spawnHealGlow(tx, ty);
   }
 
+  // ═══════════════════════════════════════════════════════════
+  //  PRIEST ABILITY VFX
+  // ═══════════════════════════════════════════════════════════
+
+  /** Penance — golden bolt streaking from caster to target with sparkle trail */
+  onPriestPenance(data) {
+    if (!this.scene) return;
+    const { source, target, boltIndex, totalBolts } = data;
+    if (!source || !target) return;
+
+    const sx = source.x;
+    const sy = source.groundY - 14;
+    const tx = target.x;
+    const ty = target.groundY - 10;
+    const dur = 150;
+
+    // Main bolt orb
+    const orb = this.scene.add.graphics();
+    orb.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    orb.fillStyle(0xffffff, 1);
+    orb.fillCircle(0, 0, 2.5);
+    orb.fillStyle(0xffdd44, 0.7);
+    orb.fillCircle(0, 0, 4);
+    orb.setPosition(sx, sy);
+
+    this.scene.tweens.add({
+      targets: orb, x: tx, y: ty,
+      duration: dur, ease: 'Quad.easeIn',
+      onComplete: () => {
+        orb.destroy();
+        // Impact flash
+        const flash = this.scene.add.circle(tx, ty, 3, 0xffffcc, 0.9);
+        flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+        this.scene.tweens.add({
+          targets: flash, scaleX: 3, scaleY: 3, alpha: 0,
+          duration: 150, onComplete: () => flash.destroy(),
+        });
+        // Impact sparkles
+        for (let i = 0; i < 6; i++) {
+          const sp = this.scene.add.graphics();
+          sp.fillStyle([0xffffaa, 0xffdd66, 0xffffff][i % 3], 0.9);
+          sp.fillCircle(0, 0, 1 + Math.random());
+          sp.setPosition(tx, ty);
+          sp.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+          const a = Math.random() * Math.PI * 2;
+          this.scene.tweens.add({
+            targets: sp,
+            x: tx + Math.cos(a) * (8 + Math.random() * 12),
+            y: ty + Math.sin(a) * (5 + Math.random() * 8),
+            alpha: 0, duration: 200,
+            onComplete: () => sp.destroy(),
+          });
+        }
+      },
+    });
+
+    // Trailing sparkle particles along path
+    const trailCount = 4;
+    for (let i = 0; i < trailCount; i++) {
+      this.scene.time.delayedCall(i * (dur / trailCount), () => {
+        if (!this.scene) return;
+        const t = i / trailCount;
+        const px = sx + (tx - sx) * t;
+        const py = sy + (ty - sy) * t;
+        const spark = this.scene.add.graphics();
+        spark.fillStyle(0xffffaa, 0.7);
+        spark.fillCircle(0, 0, 1.5);
+        spark.setPosition(px + (Math.random() - 0.5) * 4, py + (Math.random() - 0.5) * 4);
+        spark.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        this.scene.tweens.add({
+          targets: spark, alpha: 0, scaleX: 0.3, scaleY: 0.3,
+          duration: 200, onComplete: () => spark.destroy(),
+        });
+      });
+    }
+
+    // Final bolt: big flash at caster
+    if (boltIndex === totalBolts - 1) {
+      const casterFlash = this.scene.add.circle(sx, sy, 5, 0xffffcc, 0.6);
+      casterFlash.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      this.scene.tweens.add({
+        targets: casterFlash, scaleX: 3, scaleY: 2, alpha: 0,
+        duration: 300, onComplete: () => casterFlash.destroy(),
+      });
+    }
+  }
+
+  /** Hymn of Hope heal tick — rising golden motes on target */
+  onPriestHymnHeal(data) {
+    if (!this.scene) return;
+    const { target, amount } = data;
+    if (!target) return;
+
+    // Green heal number
+    this.spawnDamageNumber(target.x, target.y - 24, `+${amount}`, '#88ff88');
+
+    // Rising golden sparkles
+    for (let i = 0; i < 4; i++) {
+      const mote = this.scene.add.graphics();
+      mote.fillStyle([0xffffaa, 0xffdd66, 0xffffff, 0xffeeaa][i], 0.8);
+      mote.fillCircle(0, 0, 1 + Math.random() * 1.5);
+      mote.setPosition(
+        target.x + (Math.random() - 0.5) * 16,
+        target.groundY - 4
+      );
+      mote.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      this.scene.tweens.add({
+        targets: mote,
+        y: target.groundY - 20 - Math.random() * 12,
+        x: mote.x + (Math.random() - 0.5) * 8,
+        alpha: 0,
+        duration: 400 + Math.random() * 200,
+        onComplete: () => mote.destroy(),
+      });
+    }
+  }
+
+  /** Helper — spawns a damage/heal number (used by multiple VFX) */
+  spawnDamageNumber(x, y, text, color) {
+    if (!this.scene) return;
+    const num = this.scene.add.text(x, y, text, {
+      fontSize: '7px', fontFamily: 'monospace', color,
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(GAME_CONFIG.layers.ui).setResolution(4);
+    this.scene.tweens.add({
+      targets: num, y: y - 16, alpha: 0,
+      duration: 800, onComplete: () => num.destroy(),
+    });
+  }
+
+  /** Power Word: Radiance — massive golden sunburst */
+  onPriestRadiance(data) {
+    if (!this.scene) return;
+    const { player } = data;
+    if (!player) return;
+    const cx = player.x;
+    const cy = player.groundY;
+
+    // Sunburst flash — white core expanding
+    const core = this.scene.add.circle(cx, cy - 10, 4, 0xffffff, 1);
+    core.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+    this.scene.tweens.add({
+      targets: core, scaleX: 8, scaleY: 4, alpha: 0,
+      duration: 400, ease: 'Quad.easeOut', onComplete: () => core.destroy(),
+    });
+
+    // Golden ring expanding
+    const ring = this.scene.add.graphics();
+    ring.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    ring.lineStyle(3, 0xffdd44, 0.9);
+    ring.strokeCircle(cx, cy - 8, 6);
+    this.scene.tweens.add({
+      targets: ring, scaleX: 10, scaleY: 4, alpha: 0,
+      duration: 500, ease: 'Power2', onComplete: () => ring.destroy(),
+    });
+
+    // Second ring
+    const ring2 = this.scene.add.graphics();
+    ring2.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    ring2.lineStyle(2, 0xffffaa, 0.6);
+    ring2.strokeCircle(cx, cy - 8, 8);
+    this.scene.tweens.add({
+      targets: ring2, scaleX: 7, scaleY: 3, alpha: 0,
+      duration: 450, delay: 60, onComplete: () => ring2.destroy(),
+    });
+
+    // Radiant rays — 12 beams of light outward
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      const ray = this.scene.add.graphics();
+      ray.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      ray.lineStyle(2, 0xffffaa, 0.7);
+      ray.beginPath();
+      ray.moveTo(cx, cy - 8);
+      ray.lineTo(
+        cx + Math.cos(angle) * 50,
+        cy - 8 + Math.sin(angle) * 20
+      );
+      ray.strokePath();
+      // Glow layer
+      ray.lineStyle(4, 0xffdd44, 0.2);
+      ray.beginPath();
+      ray.moveTo(cx, cy - 8);
+      ray.lineTo(
+        cx + Math.cos(angle) * 45,
+        cy - 8 + Math.sin(angle) * 18
+      );
+      ray.strokePath();
+      this.scene.tweens.add({
+        targets: ray, alpha: 0,
+        duration: 350, delay: 50 + i * 15,
+        onComplete: () => ray.destroy(),
+      });
+    }
+
+    // Shower of golden motes falling/rising around all allies
+    const party = this.scene.getPartyMembers ? this.scene.getPartyMembers() : [];
+    for (const member of party) {
+      if (member.hp <= 0) continue;
+      for (let i = 0; i < 8; i++) {
+        const mote = this.scene.add.graphics();
+        mote.fillStyle([0xffffaa, 0xffdd44, 0xffffff, 0xffeecc][i % 4], 0.8);
+        mote.fillCircle(0, 0, 1 + Math.random() * 1.5);
+        mote.setPosition(
+          member.x + (Math.random() - 0.5) * 20,
+          member.groundY - 30 - Math.random() * 15
+        );
+        mote.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        this.scene.tweens.add({
+          targets: mote,
+          y: member.groundY - 4 + Math.random() * 4,
+          x: mote.x + (Math.random() - 0.5) * 10,
+          alpha: 0,
+          duration: 400 + Math.random() * 300,
+          delay: i * 40,
+          onComplete: () => mote.destroy(),
+        });
+      }
+    }
+
+    this.scene.cameras.main.shake(60, 0.003);
+  }
+
+  /** Radiance HOT tick — gentle rising motes */
+  onPriestRadianceTick(data) {
+    if (!this.scene) return;
+    const { target, amount } = data;
+    if (!target || target.hp <= 0) return;
+
+    this.spawnDamageNumber(target.x, target.y - 20, `+${amount}`, '#ffee88');
+    for (let i = 0; i < 3; i++) {
+      const mote = this.scene.add.graphics();
+      mote.fillStyle(0xffdd44, 0.6);
+      mote.fillCircle(0, 0, 1);
+      mote.setPosition(target.x + (Math.random() - 0.5) * 12, target.groundY - 2);
+      mote.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      this.scene.tweens.add({
+        targets: mote, y: target.groundY - 18, alpha: 0,
+        duration: 350, delay: i * 60,
+        onComplete: () => mote.destroy(),
+      });
+    }
+  }
+
+  /** Holy Fire Pillar — blazing column of divine light slamming down */
+  onPriestHolyFirePillar(data) {
+    if (!this.scene) return;
+    const { x, y, index, isHeal } = data;
+    const coreColor = isHeal ? 0x44ff88 : 0xffffff;
+    const glowColor = isHeal ? 0x44dd66 : 0xffdd44;
+    const outerColor = isHeal ? 0x22bb44 : 0xffaa22;
+
+    // Vertical beam from sky
+    const beam = this.scene.add.graphics();
+    beam.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    beam.fillStyle(coreColor, 0.9);
+    beam.fillRect(x - 2, y - 60, 4, 60);
+    beam.fillStyle(glowColor, 0.4);
+    beam.fillRect(x - 5, y - 60, 10, 60);
+    beam.fillStyle(outerColor, 0.15);
+    beam.fillRect(x - 8, y - 55, 16, 55);
+
+    this.scene.tweens.add({
+      targets: beam, alpha: 0,
+      duration: 400, delay: 100,
+      onComplete: () => beam.destroy(),
+    });
+
+    // Ground impact ring
+    const ring = this.scene.add.graphics();
+    ring.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    ring.lineStyle(2, 0xffdd44, 0.8);
+    ring.strokeCircle(x, y, 3);
+    this.scene.tweens.add({
+      targets: ring, scaleX: 5, scaleY: 2, alpha: 0,
+      duration: 300, onComplete: () => ring.destroy(),
+    });
+
+    // Flash at impact point
+    const flash = this.scene.add.circle(x, y, 4, 0xffffcc, 0.9);
+    flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+    this.scene.tweens.add({
+      targets: flash, scaleX: 3, scaleY: 1.5, alpha: 0,
+      duration: 200, onComplete: () => flash.destroy(),
+    });
+
+    // Upward sparks from impact
+    for (let i = 0; i < 6; i++) {
+      const sp = this.scene.add.graphics();
+      sp.fillStyle([0xffdd44, 0xffffaa, 0xff8844, 0xffffff][i % 4], 0.8);
+      sp.fillCircle(0, 0, 1 + Math.random());
+      sp.setPosition(x, y);
+      sp.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      const a = -Math.PI / 2 + (Math.random() - 0.5) * 1.5;
+      const spd = 15 + Math.random() * 25;
+      this.scene.tweens.add({
+        targets: sp,
+        x: x + Math.cos(a) * spd,
+        y: y + Math.sin(a) * spd,
+        alpha: 0, duration: 250 + Math.random() * 150,
+        onComplete: () => sp.destroy(),
+      });
+    }
+
+    // Ember particles drifting up from pillar
+    for (let i = 0; i < 4; i++) {
+      const ember = this.scene.add.graphics();
+      ember.fillStyle(0xffaa33, 0.7);
+      ember.fillCircle(0, 0, 0.8);
+      ember.setPosition(x + (Math.random() - 0.5) * 8, y - Math.random() * 40);
+      ember.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      this.scene.tweens.add({
+        targets: ember,
+        y: ember.y - 15 - Math.random() * 10,
+        x: ember.x + (Math.random() - 0.5) * 8,
+        alpha: 0, duration: 500,
+        onComplete: () => ember.destroy(),
+      });
+    }
+
+    // Small screen shake per pillar
+    this.scene.cameras.main.shake(40, 0.002 + index * 0.0005);
+  }
+
+  /** Spirit Link — golden chains connecting all party members + HP equalize flash */
+  onPriestSpiritLink(data) {
+    if (!this.scene) return;
+    const { player, targets, duration } = data;
+    if (!targets || targets.length < 2) return;
+
+    // Draw chains between all pairs
+    for (let i = 0; i < targets.length; i++) {
+      for (let j = i + 1; j < targets.length; j++) {
+        const a = targets[i];
+        const b = targets[j];
+        this._drawSpiritChain(a.x, a.groundY - 10, b.x, b.groundY - 10);
+      }
+    }
+
+    // Golden flash on each target
+    for (const t of targets) {
+      const flash = this.scene.add.circle(t.x, t.groundY - 10, 5, 0xffdd44, 0.8);
+      flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      this.scene.tweens.add({
+        targets: flash, scaleX: 3, scaleY: 2, alpha: 0,
+        duration: 400, onComplete: () => flash.destroy(),
+      });
+
+      // Rising golden particles
+      for (let k = 0; k < 6; k++) {
+        const mote = this.scene.add.graphics();
+        mote.fillStyle([0xffdd44, 0xffffaa, 0xffffff][k % 3], 0.7);
+        mote.fillCircle(0, 0, 1 + Math.random());
+        mote.setPosition(t.x + (Math.random() - 0.5) * 12, t.groundY - 6);
+        mote.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        this.scene.tweens.add({
+          targets: mote,
+          y: t.groundY - 22 - Math.random() * 10,
+          alpha: 0, duration: 400 + Math.random() * 200,
+          delay: k * 30,
+          onComplete: () => mote.destroy(),
+        });
+      }
+    }
+
+    // Persistent chain aura for duration (re-draw chains periodically)
+    let tickCount = 0;
+    const chainTick = this.scene.time.addEvent({
+      delay: 300, repeat: Math.floor(duration / 300) - 1,
+      callback: () => {
+        if (!this.scene) return;
+        tickCount++;
+        const alive = targets.filter(t => t.hp > 0 && t.scene);
+        if (alive.length < 2) { chainTick.destroy(); return; }
+        for (let i = 0; i < alive.length; i++) {
+          for (let j = i + 1; j < alive.length; j++) {
+            this._drawSpiritChain(
+              alive[i].x, alive[i].groundY - 10,
+              alive[j].x, alive[j].groundY - 10,
+              0.3 // lower alpha for persistent chains
+            );
+          }
+        }
+      },
+    });
+  }
+
+  /** Helper — draw a jagged golden chain between two points */
+  _drawSpiritChain(x1, y1, x2, y2, alpha = 0.7) {
+    if (!this.scene) return;
+    const chain = this.scene.add.graphics();
+    chain.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+    // Golden jagged chain
+    chain.lineStyle(2, 0xffdd44, alpha);
+    chain.beginPath();
+    chain.moveTo(x1, y1);
+    const segments = 6;
+    for (let s = 1; s < segments; s++) {
+      const t = s / segments;
+      const px = x1 + (x2 - x1) * t + (Math.random() - 0.5) * 6;
+      const py = y1 + (y2 - y1) * t + (Math.random() - 0.5) * 4;
+      chain.lineTo(px, py);
+    }
+    chain.lineTo(x2, y2);
+    chain.strokePath();
+
+    // White inner glow
+    chain.lineStyle(1, 0xffffff, alpha * 0.5);
+    chain.beginPath();
+    chain.moveTo(x1, y1);
+    chain.lineTo(x2, y2);
+    chain.strokePath();
+
+    this.scene.tweens.add({
+      targets: chain, alpha: 0,
+      duration: 280,
+      onComplete: () => chain.destroy(),
+    });
+  }
+
+  /** Lightning Smite — jagged bolt from sky electrocutes enemy */
+  onPriestLightningSmite(data) {
+    if (!this.scene) return;
+    const { source, target, x, y, index } = data;
+    if (!target) return;
+
+    const sx = x;
+    const sy = y - 70;
+    const tx = x;
+    const ty = y;
+
+    // Jagged lightning bolt from sky
+    for (let layer = 0; layer < 3; layer++) {
+      const bolt = this.scene.add.graphics();
+      bolt.setDepth(GAME_CONFIG.layers.foregroundDecor + 2 - layer);
+      const colors = [0xffffff, 0x88ccff, 0x4488ff];
+      const widths = [3, 2, 1];
+      bolt.lineStyle(widths[layer], colors[layer], 0.9 - layer * 0.2);
+      bolt.beginPath();
+      bolt.moveTo(sx, sy);
+      const segs = 6 + Math.floor(Math.random() * 4);
+      for (let s = 1; s < segs; s++) {
+        const t = s / segs;
+        bolt.lineTo(
+          sx + (tx - sx) * t + (Math.random() - 0.5) * (12 - layer * 3),
+          sy + (ty - sy) * t + (Math.random() - 0.5) * (6 - layer * 2)
+        );
+      }
+      bolt.lineTo(tx, ty);
+      bolt.strokePath();
+      this.scene.tweens.add({
+        targets: bolt, alpha: 0,
+        duration: 250, delay: layer * 20,
+        onComplete: () => bolt.destroy(),
+      });
+    }
+
+    // Bright impact flash
+    const flash = this.scene.add.circle(tx, ty, 5, 0x88ccff, 0.9);
+    flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+    this.scene.tweens.add({
+      targets: flash, scaleX: 4, scaleY: 2, alpha: 0,
+      duration: 200, onComplete: () => flash.destroy(),
+    });
+
+    // Electric sparks radiating from impact
+    for (let i = 0; i < 8; i++) {
+      const sp = this.scene.add.graphics();
+      sp.fillStyle([0x88ccff, 0xaaddff, 0xffffff, 0x4488ff][i % 4], 0.9);
+      sp.fillCircle(0, 0, 1 + Math.random());
+      sp.setPosition(tx, ty);
+      sp.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      const a = Math.random() * Math.PI * 2;
+      const spd = 10 + Math.random() * 20;
+      this.scene.tweens.add({
+        targets: sp,
+        x: tx + Math.cos(a) * spd,
+        y: ty + Math.sin(a) * spd * 0.5,
+        alpha: 0, duration: 200 + Math.random() * 150,
+        onComplete: () => sp.destroy(),
+      });
+    }
+
+    // Mini arcs jumping off the target (secondary lightning)
+    for (let i = 0; i < 3; i++) {
+      this.scene.time.delayedCall(50 + i * 40, () => {
+        if (!this.scene) return;
+        const arc = this.scene.add.graphics();
+        arc.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        arc.lineStyle(1, 0x88ccff, 0.6);
+        arc.beginPath();
+        arc.moveTo(tx, ty - 4);
+        const endX = tx + (Math.random() - 0.5) * 24;
+        const endY = ty - 8 + (Math.random() - 0.5) * 12;
+        arc.lineTo(
+          tx + (endX - tx) * 0.5 + (Math.random() - 0.5) * 8,
+          ty - 4 + (endY - ty + 4) * 0.5 + (Math.random() - 0.5) * 6
+        );
+        arc.lineTo(endX, endY);
+        arc.strokePath();
+        this.scene.tweens.add({
+          targets: arc, alpha: 0, duration: 150,
+          onComplete: () => arc.destroy(),
+        });
+      });
+    }
+
+    // Tint enemy blue briefly
+    if (target.sprite) {
+      target.sprite.setTint(0x88ccff);
+      this.scene.time.delayedCall(200, () => {
+        if (target.sprite && !target.dead) target.sprite.clearTint();
+      });
+    }
+
+    this.scene.cameras.main.shake(30, 0.002 + index * 0.0003);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  RAID BOSS ABILITY VFX
+  // ═══════════════════════════════════════════════════════════
+
+  /** Main telegraph — boss charges up, warning text + danger pulse */
+  onRaidBossTelegraph(data) {
+    if (!this.scene) return;
+    const { enemy, ability, config, x, y, dir } = data;
+    if (!enemy) return;
+    const dur = config.telegraphTime || 800;
+
+    // Boss body glow pulse
+    const glow = this.scene.add.graphics();
+    glow.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+    glow.fillStyle(0xff2200, 0.4);
+    glow.fillCircle(x, y - 20, 16);
+    this.scene.tweens.add({
+      targets: glow, scaleX: 3, scaleY: 2.5, alpha: 0,
+      duration: dur, ease: 'Sine.easeInOut',
+      onComplete: () => glow.destroy(),
+    });
+
+    // Ability name text
+    const names = {
+      hellfire_rain: 'HELLFIRE RAIN',
+      shadow_cleave: 'SHADOW CLEAVE',
+      fel_stomp: 'FEL STOMP',
+      inferno_charge: 'INFERNO CHARGE',
+    };
+    const abilityName = names[ability] || ability.toUpperCase();
+    const text = this.scene.add.text(x, y - 50, abilityName, {
+      fontSize: '8px', fontFamily: 'monospace', color: '#ff4444',
+      stroke: '#000000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(GAME_CONFIG.layers.ui + 5).setResolution(4);
+    this.scene.tweens.add({
+      targets: text, y: y - 65, alpha: 0,
+      duration: dur + 400, onComplete: () => text.destroy(),
+    });
+
+    // Pulsing danger rings
+    for (let i = 0; i < 3; i++) {
+      this.scene.time.delayedCall(i * (dur / 4), () => {
+        if (!this.scene) return;
+        const ring = this.scene.add.graphics();
+        ring.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        ring.lineStyle(2, 0xff4422, 0.6);
+        ring.strokeCircle(x, y - 10, 8);
+        this.scene.tweens.add({
+          targets: ring, scaleX: 5, scaleY: 2.5, alpha: 0,
+          duration: dur / 2, onComplete: () => ring.destroy(),
+        });
+      });
+    }
+
+    // Shadow cleave: show frontal danger zone
+    if (ability === 'shadow_cleave') {
+      const zone = this.scene.add.graphics();
+      zone.setDepth(GAME_CONFIG.layers.groundDecor + 2);
+      zone.fillStyle(0xff2200, 0.08);
+      zone.fillRect(x, y - 30, dir * (config.width || 120), 60);
+      zone.setAlpha(0);
+      this.scene.tweens.add({
+        targets: zone, alpha: 1,
+        duration: dur, ease: 'Sine.easeIn',
+        onComplete: () => {
+          this.scene.tweens.add({
+            targets: zone, alpha: 0, duration: 200,
+            onComplete: () => zone.destroy(),
+          });
+        },
+      });
+      // Pulsing line at cleave boundary
+      const line = this.scene.add.graphics();
+      line.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      line.lineStyle(2, 0xff4444, 0.5);
+      line.beginPath();
+      line.moveTo(x, y - 30);
+      line.lineTo(x + dir * (config.width || 120), y - 30);
+      line.lineTo(x + dir * (config.width || 120), y + 30);
+      line.lineTo(x, y + 30);
+      line.closePath();
+      line.strokePath();
+      this.scene.tweens.add({
+        targets: line, alpha: 0, duration: dur + 200,
+        onComplete: () => line.destroy(),
+      });
+    }
+
+    // Fel stomp: show circular danger zone
+    if (ability === 'fel_stomp') {
+      const zone = this.scene.add.graphics();
+      zone.setDepth(GAME_CONFIG.layers.groundDecor + 2);
+      zone.fillStyle(0x44ff22, 0.1);
+      zone.fillCircle(x, y, 8);
+      zone.setScale(0.5);
+      this.scene.tweens.add({
+        targets: zone,
+        scaleX: (config.radius || 60) / 8,
+        scaleY: (config.radius || 60) / 16,
+        alpha: 0.35,
+        duration: dur, ease: 'Quad.easeIn',
+        onComplete: () => {
+          this.scene.tweens.add({
+            targets: zone, alpha: 0, duration: 150,
+            onComplete: () => zone.destroy(),
+          });
+        },
+      });
+    }
+
+    // Inferno charge: show charge line
+    if (ability === 'inferno_charge') {
+      const line = this.scene.add.graphics();
+      line.setDepth(GAME_CONFIG.layers.groundDecor + 2);
+      line.fillStyle(0xff4400, 0.15);
+      line.fillRect(x, y - 10, dir * 200, 20);
+      line.setAlpha(0);
+      this.scene.tweens.add({
+        targets: line, alpha: 1,
+        duration: dur,
+        onComplete: () => {
+          this.scene.tweens.add({
+            targets: line, alpha: 0, duration: 300,
+            onComplete: () => line.destroy(),
+          });
+        },
+      });
+      // Arrow indicators
+      for (let i = 0; i < 4; i++) {
+        const arrow = this.scene.add.text(x + dir * (40 + i * 40), y - 4, dir > 0 ? '>>>' : '<<<', {
+          fontSize: '6px', fontFamily: 'monospace', color: '#ff6644',
+        }).setOrigin(0.5).setDepth(GAME_CONFIG.layers.foregroundDecor).setResolution(4).setAlpha(0);
+        this.scene.tweens.add({
+          targets: arrow, alpha: 0.8,
+          duration: dur * 0.6, delay: i * 100,
+          yoyo: true,
+          onComplete: () => arrow.destroy(),
+        });
+      }
+    }
+  }
+
+  /** Hellfire drop — telegraph circle on ground before impact */
+  onRaidBossHellfireDrop(data) {
+    if (!this.scene) return;
+    const { x, y, radius, delay } = data;
+
+    // Warning circle on ground — grows to full size
+    const warn = this.scene.add.graphics();
+    warn.setDepth(GAME_CONFIG.layers.groundDecor + 3);
+    warn.fillStyle(0xff4400, 0.2);
+    warn.fillCircle(0, 0, radius);
+    warn.setPosition(x, y);
+    warn.setScale(0.2);
+    warn.lineStyle(1, 0xff6644, 0.6);
+    warn.strokeCircle(0, 0, radius);
+
+    this.scene.tweens.add({
+      targets: warn, scaleX: 1, scaleY: 0.4,
+      alpha: 0.5, duration: delay,
+      ease: 'Quad.easeIn',
+      onComplete: () => warn.destroy(),
+    });
+  }
+
+  /** Hellfire impact — explosion at impact point */
+  onRaidBossHellfireImpact(data) {
+    if (!this.scene) return;
+    const { x, y, radius } = data;
+
+    // Flash
+    const flash = this.scene.add.circle(x, y, 4, 0xffaa22, 0.9);
+    flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+    this.scene.tweens.add({
+      targets: flash, scaleX: 4, scaleY: 2, alpha: 0,
+      duration: 200, onComplete: () => flash.destroy(),
+    });
+
+    // Fire burst
+    for (let i = 0; i < 8; i++) {
+      const flame = this.scene.add.graphics();
+      flame.fillStyle([0xff2200, 0xff6600, 0xffaa00, 0xffdd44][i % 4], 0.8);
+      flame.fillCircle(0, 0, 1.5 + Math.random() * 2);
+      flame.setPosition(x, y);
+      flame.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      const a = Math.random() * Math.PI * 2;
+      const spd = 8 + Math.random() * 16;
+      this.scene.tweens.add({
+        targets: flame,
+        x: x + Math.cos(a) * spd, y: y + Math.sin(a) * spd * 0.4 - 6,
+        alpha: 0, scaleX: 2, scaleY: 2,
+        duration: 250 + Math.random() * 150,
+        onComplete: () => flame.destroy(),
+      });
+    }
+
+    // Ground scorch
+    const scorch = this.scene.add.graphics();
+    scorch.fillStyle(0x331100, 0.4);
+    scorch.fillCircle(0, 0, radius * 0.5);
+    scorch.setPosition(x, y);
+    scorch.setDepth(GAME_CONFIG.layers.groundDecor + 1);
+    scorch.setScale(1, 0.4);
+    this.scene.tweens.add({
+      targets: scorch, alpha: 0, delay: 1500, duration: 1000,
+      onComplete: () => scorch.destroy(),
+    });
+
+    this.scene.cameras.main.shake(50, 0.003);
+  }
+
+  /** Shadow Cleave — massive frontal sweep VFX */
+  onRaidBossShadowCleave(data) {
+    if (!this.scene) return;
+    const { enemy, dir, width, x, y } = data;
+
+    // Giant sweeping arc (3 layers)
+    for (let layer = 0; layer < 3; layer++) {
+      const gfx = this.scene.add.graphics();
+      gfx.setDepth(GAME_CONFIG.layers.foregroundDecor + 2 - layer);
+      const colors = [0xffffff, 0xff4444, 0xff8844];
+      const widths = [6, 4, 2];
+      const alphas = [0.9, 0.7, 0.4];
+      gfx.lineStyle(widths[layer], colors[layer], alphas[layer]);
+      const start = dir > 0 ? -2.2 : Math.PI - 0.6;
+      gfx.beginPath();
+      gfx.arc(x + dir * 10, y - 15, 40 + layer * 6, start, start + 3.0);
+      gfx.strokePath();
+      this.scene.tweens.add({
+        targets: gfx, alpha: 0, scaleX: 1.3, scaleY: 1.1,
+        duration: 350, delay: layer * 30,
+        onComplete: () => gfx.destroy(),
+      });
+    }
+
+    // Fire trail along arc
+    for (let i = 0; i < 12; i++) {
+      const a = (dir > 0 ? -2.2 : Math.PI - 0.6) + (i / 12) * 3.0;
+      const fx = x + dir * 10 + Math.cos(a) * 42;
+      const fy = y - 15 + Math.sin(a) * 42;
+      const flame = this.scene.add.graphics();
+      flame.fillStyle([0xff2222, 0xff6644, 0xffaa44][i % 3], 0.8);
+      flame.fillCircle(0, 0, 2 + Math.random() * 2);
+      flame.setPosition(fx, fy);
+      flame.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      this.scene.tweens.add({
+        targets: flame, y: fy - 8, alpha: 0, scaleX: 2, scaleY: 2,
+        duration: 250 + Math.random() * 150, delay: i * 15,
+        onComplete: () => flame.destroy(),
+      });
+    }
+
+    // Ground shockwave
+    const ring = this.scene.add.graphics();
+    ring.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    ring.lineStyle(3, 0xff4444, 0.8);
+    ring.strokeCircle(x + dir * 20, y, 6);
+    this.scene.tweens.add({
+      targets: ring, scaleX: 10, scaleY: 3, alpha: 0,
+      duration: 500, onComplete: () => ring.destroy(),
+    });
+
+    // Spark explosion
+    for (let i = 0; i < 16; i++) {
+      const sp = this.scene.add.graphics();
+      sp.fillStyle([0xff4444, 0xffaa44, 0xffffff][i % 3], 0.9);
+      sp.fillCircle(0, 0, 1 + Math.random() * 1.5);
+      sp.setPosition(x + dir * 30, y - 10);
+      sp.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      const a = Math.random() * Math.PI * 2;
+      this.scene.tweens.add({
+        targets: sp,
+        x: sp.x + Math.cos(a) * (15 + Math.random() * 25),
+        y: sp.y + Math.sin(a) * (10 + Math.random() * 15),
+        alpha: 0, duration: 300 + Math.random() * 200,
+        onComplete: () => sp.destroy(),
+      });
+    }
+  }
+
+  /** Fel Stomp — concentric shockwaves + fel green fire */
+  onRaidBossFelStomp(data) {
+    if (!this.scene) return;
+    const { enemy, x, y, radius } = data;
+
+    // White impact flash
+    const flash = this.scene.add.circle(x, y, 8, 0xffffff, 1);
+    flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+    this.scene.tweens.add({
+      targets: flash, scaleX: 6, scaleY: 3, alpha: 0,
+      duration: 300, onComplete: () => flash.destroy(),
+    });
+
+    // Multiple concentric shockwave rings
+    for (let i = 0; i < 4; i++) {
+      const ring = this.scene.add.graphics();
+      ring.setDepth(GAME_CONFIG.layers.foregroundDecor + 2 - i);
+      const colors = [0x44ff22, 0x22cc11, 0x88ff44, 0xffffff];
+      ring.lineStyle(3 - Math.min(i, 2), colors[i], 0.8 - i * 0.15);
+      ring.strokeCircle(x, y, 5 + i * 2);
+      this.scene.tweens.add({
+        targets: ring,
+        scaleX: (radius / 5) * (1 + i * 0.3),
+        scaleY: (radius / 12) * (1 + i * 0.2),
+        alpha: 0, duration: 450 + i * 80,
+        delay: i * 60, ease: 'Quad.easeOut',
+        onComplete: () => ring.destroy(),
+      });
+    }
+
+    // Ground cracks with green glow
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+      const len = radius * 0.6 + Math.random() * radius * 0.4;
+      const crack = this.scene.add.graphics();
+      crack.setDepth(GAME_CONFIG.layers.groundDecor + 3);
+      crack.lineStyle(1.5, 0x44ff22, 0.8);
+      crack.beginPath();
+      crack.moveTo(x, y);
+      const segs = 3 + Math.floor(Math.random() * 3);
+      for (let s = 1; s <= segs; s++) {
+        const t = s / segs;
+        crack.lineTo(
+          x + Math.cos(angle) * len * t + (Math.random() - 0.5) * 6,
+          y + Math.sin(angle) * len * t * 0.35 + (Math.random() - 0.5) * 3
+        );
+      }
+      crack.strokePath();
+      this.scene.tweens.add({
+        targets: crack, alpha: 0, delay: 1200, duration: 800,
+        onComplete: () => crack.destroy(),
+      });
+    }
+
+    // Debris chunks
+    for (let i = 0; i < 14; i++) {
+      const chunk = this.scene.add.graphics();
+      chunk.fillStyle([0x44ff22, 0x887766, 0x665544, 0x22cc11][i % 4], 0.9);
+      chunk.fillRect(-1, -1, 2 + Math.random() * 3, 2 + Math.random() * 3);
+      chunk.setPosition(x + (Math.random() - 0.5) * 20, y);
+      chunk.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      const la = -Math.PI / 2 + (Math.random() - 0.5) * 1.4;
+      const spd = 30 + Math.random() * 80;
+      const dur = 400 + Math.random() * 400;
+      this.scene.tweens.add({
+        targets: chunk,
+        x: chunk.x + Math.cos(la) * spd * (dur / 1000),
+        angle: Phaser.Math.Between(-360, 360),
+        duration: dur,
+      });
+      this.scene.tweens.add({
+        targets: chunk,
+        y: chunk.y + Math.sin(la) * spd * 0.4 * (dur / 1000),
+        duration: dur * 0.4, ease: 'Quad.easeOut',
+        onComplete: () => {
+          this.scene.tweens.add({
+            targets: chunk, y: y + 4, duration: dur * 0.6, ease: 'Quad.easeIn',
+          });
+        },
+      });
+      this.scene.tweens.add({
+        targets: chunk, alpha: 0, delay: dur * 0.7, duration: dur * 0.3,
+        onComplete: () => chunk.destroy(),
+      });
+    }
+
+    // Fel green fire column
+    for (let i = 0; i < 10; i++) {
+      const flame = this.scene.add.graphics();
+      flame.fillStyle([0x44ff22, 0x88ff44, 0x22cc11][i % 3], 0.7);
+      flame.fillCircle(0, 0, 2 + Math.random() * 3);
+      flame.setPosition(x + (Math.random() - 0.5) * 30, y);
+      flame.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      this.scene.tweens.add({
+        targets: flame,
+        y: y - 20 - Math.random() * 30,
+        x: flame.x + (Math.random() - 0.5) * 10,
+        alpha: 0, scaleX: 0.5, scaleY: 2,
+        duration: 400 + Math.random() * 300,
+        delay: i * 30,
+        onComplete: () => flame.destroy(),
+      });
+    }
+  }
+
+  /** Charge trail — fire left on ground during inferno charge */
+  onRaidBossChargeTrail(data) {
+    if (!this.scene) return;
+    const { x, y } = data;
+
+    // Small fire puff
+    const fire = this.scene.add.graphics();
+    fire.fillStyle([0xff4400, 0xff6600, 0xff8800][Phaser.Math.Between(0, 2)], 0.6);
+    fire.fillCircle(0, 0, 2 + Math.random() * 2);
+    fire.setPosition(x + (Math.random() - 0.5) * 8, y);
+    fire.setDepth(GAME_CONFIG.layers.groundDecor + 2);
+    this.scene.tweens.add({
+      targets: fire, y: y - 6, alpha: 0.3, scaleY: 1.5,
+      duration: 2500,
+    });
+    this.scene.tweens.add({
+      targets: fire, alpha: 0, delay: 2500, duration: 1000,
+      onComplete: () => fire.destroy(),
+    });
+  }
+
+  /** Charge end — skid + impact VFX */
+  onRaidBossChargeEnd(data) {
+    if (!this.scene) return;
+    const { enemy } = data;
+    if (!enemy) return;
+
+    // Skid dust burst
+    for (let i = 0; i < 8; i++) {
+      const dust = this.scene.add.graphics();
+      dust.fillStyle(0xaa8866, 0.5);
+      dust.fillCircle(0, 0, 2 + Math.random() * 3);
+      dust.setPosition(enemy.x + (Math.random() - 0.5) * 20, enemy.groundY);
+      dust.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      this.scene.tweens.add({
+        targets: dust,
+        x: dust.x + (Math.random() - 0.5) * 25,
+        y: dust.y - 5 - Math.random() * 10,
+        alpha: 0, scaleX: 1.5, scaleY: 1,
+        duration: 400, onComplete: () => dust.destroy(),
+      });
+    }
+    this.scene.cameras.main.shake(150, 0.008);
+  }
+
+  /** Trail fade — fire trail dissipates */
+  onRaidBossTrailFade(data) {
+    // Trail fires auto-fade via their own tweens — this is a placeholder for cleanup
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  ADVANCED ENEMY AI VFX
+  // ═══════════════════════════════════════════════════════════
+
+  /** Dash start — dust kick + speed lines */
+  onEnemyDash(data) {
+    if (!this.scene) return;
+    const { enemy } = data;
+    if (!enemy || enemy.dead) return;
+    const color = ENEMY_COLORS[enemy.enemyKey] || 0xff6644;
+
+    // Dust puff at start
+    for (let i = 0; i < 6; i++) {
+      const dust = this.scene.add.graphics();
+      dust.fillStyle(0x887766, 0.6);
+      dust.fillCircle(0, 0, Phaser.Math.Between(1, 3));
+      dust.setPosition(enemy.x, enemy.groundY);
+      dust.setDepth(GAME_CONFIG.layers.entities + enemy.groundY - 1);
+      this.scene.tweens.add({
+        targets: dust,
+        x: enemy.x + (Math.random() - 0.5) * 20,
+        y: enemy.groundY - Math.random() * 8,
+        alpha: 0, scaleX: 2, scaleY: 2,
+        duration: 250 + Math.random() * 150,
+        onComplete: () => dust.destroy(),
+      });
+    }
+
+    // Speed lines behind enemy
+    const dir = enemy.facingRight ? -1 : 1;
+    for (let i = 0; i < 4; i++) {
+      const line = this.scene.add.graphics();
+      line.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      line.lineStyle(1, color, 0.7);
+      const lx = enemy.x + dir * 6;
+      const ly = enemy.groundY - 8 + (i - 1.5) * 5;
+      line.beginPath();
+      line.moveTo(lx, ly);
+      line.lineTo(lx + dir * Phaser.Math.Between(12, 25), ly);
+      line.strokePath();
+      this.scene.tweens.add({
+        targets: line, alpha: 0, duration: 200,
+        delay: i * 30,
+        onComplete: () => line.destroy(),
+      });
+    }
+  }
+
+  /** Dash end — skid dust */
+  onEnemyDashEnd(data) {
+    if (!this.scene) return;
+    const { enemy } = data;
+    if (!enemy || enemy.dead) return;
+    for (let i = 0; i < 4; i++) {
+      const dust = this.scene.add.graphics();
+      dust.fillStyle(0x998877, 0.5);
+      dust.fillCircle(0, 0, 1 + Math.random() * 2);
+      dust.setPosition(enemy.x, enemy.groundY);
+      dust.setDepth(GAME_CONFIG.layers.entities + enemy.groundY - 1);
+      this.scene.tweens.add({
+        targets: dust,
+        x: enemy.x + (Math.random() - 0.5) * 16,
+        y: enemy.groundY - Math.random() * 6,
+        alpha: 0,
+        duration: 200,
+        onComplete: () => dust.destroy(),
+      });
+    }
+  }
+
+  /** Afterimage — ghostly trailing copy of enemy */
+  onEnemyAfterimage(data) {
+    if (!this.scene) return;
+    const { enemy } = data;
+    if (!enemy || enemy.dead) return;
+    const color = ENEMY_COLORS[enemy.enemyKey] || 0xff6644;
+
+    const ghost = this.scene.add.graphics();
+    ghost.setDepth(GAME_CONFIG.layers.entities + enemy.groundY - 1);
+    ghost.fillStyle(color, 0.4);
+    ghost.fillRect(-6, -20, 12, 20);
+    ghost.setPosition(enemy.x, enemy.groundY);
+    this.scene.tweens.add({
+      targets: ghost,
+      alpha: 0, scaleX: 1.3, scaleY: 1.1,
+      duration: 180,
+      onComplete: () => ghost.destroy(),
+    });
+  }
+
+  /** Jump start — growing shadow on ground */
+  onEnemyJumpStart(data) {
+    if (!this.scene) return;
+    const { enemy, targetX, targetY } = data;
+    if (!enemy) return;
+
+    // Shadow at landing zone
+    const shadow = this.scene.add.graphics();
+    shadow.setDepth(GAME_CONFIG.layers.groundDecor + 1);
+    shadow.fillStyle(0x000000, 0.15);
+    shadow.fillCircle(0, 0, 6);
+    shadow.setPosition(targetX, targetY + 2);
+    shadow.setScale(0.3);
+
+    this.scene.tweens.add({
+      targets: shadow,
+      scaleX: 2.5, scaleY: 1,
+      alpha: 0.35,
+      duration: 400,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        this.scene.tweens.add({
+          targets: shadow, alpha: 0, duration: 150,
+          onComplete: () => shadow.destroy(),
+        });
+      },
+    });
+
+    // Launch particles at origin
+    const color = ENEMY_COLORS[enemy.enemyKey] || 0xff6644;
+    for (let i = 0; i < 5; i++) {
+      const p = this.scene.add.graphics();
+      p.fillStyle(color, 0.6);
+      p.fillCircle(0, 0, 1);
+      p.setPosition(enemy.x, enemy.groundY);
+      p.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      this.scene.tweens.add({
+        targets: p,
+        x: enemy.x + (Math.random() - 0.5) * 20,
+        y: enemy.groundY + Math.random() * 6,
+        alpha: 0,
+        duration: 300,
+        onComplete: () => p.destroy(),
+      });
+    }
+  }
+
+  /** Jump slam impact — massive shockwave + debris + cracks */
+  onEnemyJumpSlam(data) {
+    if (!this.scene) return;
+    const { enemy, x, y, radius } = data;
+    if (!enemy) return;
+    const color = ENEMY_COLORS[enemy.enemyKey] || 0xff6644;
+    const isBoss = enemy.enemyData?.type === 'boss';
+    const scale = isBoss ? 1.6 : 1.0;
+
+    // White impact flash
+    const flash = this.scene.add.circle(x, y, 5 * scale, 0xffffff, 0.9);
+    flash.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    this.scene.tweens.add({
+      targets: flash, scaleX: 4 * scale, scaleY: 2 * scale, alpha: 0,
+      duration: 200, onComplete: () => flash.destroy(),
+    });
+
+    // Shockwave ring
+    const ring = this.scene.add.graphics();
+    ring.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    ring.lineStyle(isBoss ? 3 : 2, color, 0.8);
+    ring.strokeCircle(x, y, 4);
+    this.scene.tweens.add({
+      targets: ring,
+      scaleX: 8 * scale, scaleY: 3 * scale,
+      alpha: 0, duration: 400,
+      onComplete: () => ring.destroy(),
+    });
+
+    // Secondary ring (bosses only)
+    if (isBoss) {
+      const ring2 = this.scene.add.graphics();
+      ring2.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      ring2.lineStyle(2, 0xffffff, 0.5);
+      ring2.strokeCircle(x, y, 6);
+      this.scene.tweens.add({
+        targets: ring2,
+        scaleX: 6, scaleY: 2.5, alpha: 0,
+        duration: 350, delay: 60,
+        onComplete: () => ring2.destroy(),
+      });
+    }
+
+    // Ground crack lines radiating outward
+    const crackCount = isBoss ? 8 : 5;
+    for (let i = 0; i < crackCount; i++) {
+      const angle = (i / crackCount) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+      const len = (radius * 0.8 + Math.random() * radius * 0.5) * scale;
+      const crack = this.scene.add.graphics();
+      crack.setDepth(GAME_CONFIG.layers.groundDecor + 2);
+      crack.lineStyle(1, 0x444444, 0.7);
+      crack.beginPath();
+      crack.moveTo(x, y);
+      // Jagged crack line
+      const segments = 3 + Math.floor(Math.random() * 3);
+      for (let s = 1; s <= segments; s++) {
+        const t = s / segments;
+        const px = x + Math.cos(angle) * len * t + (Math.random() - 0.5) * 4;
+        const py = y + Math.sin(angle) * len * t * 0.4 + (Math.random() - 0.5) * 2;
+        crack.lineTo(px, py);
+      }
+      crack.strokePath();
+      this.scene.tweens.add({
+        targets: crack, alpha: 0, delay: 800, duration: 600,
+        onComplete: () => crack.destroy(),
+      });
+    }
+
+    // Debris chunks launching upward
+    const debrisCount = isBoss ? 10 : 6;
+    for (let i = 0; i < debrisCount; i++) {
+      const rock = this.scene.add.graphics();
+      rock.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      const rc = [0x887766, 0x776655, 0x665544, color][Phaser.Math.Between(0, 3)];
+      rock.fillStyle(rc, 1);
+      rock.fillRect(-1, -1, 2 + Math.random() * 2, 2 + Math.random() * 2);
+      rock.setPosition(x + (Math.random() - 0.5) * radius * 0.6, y);
+
+      const launchAngle = -Math.PI / 2 + (Math.random() - 0.5) * 1.2;
+      const speed = Phaser.Math.Between(40, 120) * scale;
+      const dur = Phaser.Math.Between(300, 600);
+      const endX = rock.x + Math.cos(launchAngle) * speed * (dur / 1000);
+      const peakY = y - Math.abs(Math.sin(launchAngle)) * speed * 0.4;
+
+      this.scene.tweens.add({
+        targets: rock, x: endX, angle: Phaser.Math.Between(-360, 360),
+        duration: dur, ease: 'Linear',
+      });
+      this.scene.tweens.add({
+        targets: rock, y: peakY,
+        duration: dur * 0.4, ease: 'Quad.easeOut',
+        onComplete: () => {
+          this.scene.tweens.add({
+            targets: rock, y: y + 2, duration: dur * 0.6, ease: 'Quad.easeIn',
+          });
+        },
+      });
+      this.scene.tweens.add({
+        targets: rock, alpha: 0, delay: dur * 0.7, duration: dur * 0.3,
+        onComplete: () => rock.destroy(),
+      });
+    }
+
+    // Dust cloud
+    for (let i = 0; i < 8; i++) {
+      const dust = this.scene.add.graphics();
+      dust.fillStyle(0xaa9988, 0.4);
+      dust.fillCircle(0, 0, 2 + Math.random() * 3);
+      dust.setPosition(x + (Math.random() - 0.5) * 20, y);
+      dust.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      this.scene.tweens.add({
+        targets: dust,
+        x: dust.x + (Math.random() - 0.5) * 30,
+        y: dust.y - 5 - Math.random() * 10,
+        alpha: 0, scaleX: 2, scaleY: 1.5,
+        duration: 300 + Math.random() * 200,
+        onComplete: () => dust.destroy(),
+      });
+    }
+  }
+
+  /** Dodge — smoke puff + blur at origin */
+  onEnemyDodge(data) {
+    if (!this.scene) return;
+    const { enemy, fromX, fromY } = data;
+    if (!enemy) return;
+    const color = ENEMY_COLORS[enemy.enemyKey] || 0xff6644;
+
+    // Smoke puff at dodge origin
+    for (let i = 0; i < 5; i++) {
+      const puff = this.scene.add.graphics();
+      puff.fillStyle(0xaaaaaa, 0.4);
+      puff.fillCircle(0, 0, 2 + Math.random() * 2);
+      puff.setPosition(fromX, fromY - 8);
+      puff.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      this.scene.tweens.add({
+        targets: puff,
+        x: fromX + (Math.random() - 0.5) * 16,
+        y: fromY - 12 - Math.random() * 8,
+        alpha: 0, scaleX: 1.5, scaleY: 1.5,
+        duration: 200 + Math.random() * 100,
+        onComplete: () => puff.destroy(),
+      });
+    }
+
+    // Ghost silhouette at origin
+    const ghost = this.scene.add.graphics();
+    ghost.fillStyle(color, 0.35);
+    ghost.fillRect(-6, -20, 12, 20);
+    ghost.setPosition(fromX, fromY);
+    ghost.setDepth(GAME_CONFIG.layers.entities + fromY - 1);
+    this.scene.tweens.add({
+      targets: ghost,
+      alpha: 0, scaleX: 1.5, scaleY: 1.2,
+      duration: 250,
+      onComplete: () => ghost.destroy(),
+    });
+  }
+
+  /** Enemy special ability — type-specific spectacular VFX */
+  onEnemySpecial(data) {
+    if (!this.scene) return;
+    const { enemy, ability, x, y, dir } = data;
+    if (!enemy) return;
+    const color = ENEMY_COLORS[enemy.enemyKey] || 0xff6644;
+
+    if (ability === 'cleaving_spin') {
+      this._vfxCleavingSpin(x, y, color, enemy);
+    } else if (ability === 'fire_breath') {
+      this._vfxFireBreath(x, y, dir || 1, color, enemy);
+    } else if (ability === 'ground_pound' || ability === 'ice_shatter') {
+      this._vfxGroundPound(x, y, color, enemy, ability === 'ice_shatter');
+    } else if (ability === 'magma_slam') {
+      this._vfxMagmaSlam(x, y, dir || 1, color, enemy);
+    } else if (ability === 'water_surge') {
+      this._vfxWaterSurge(x, y, dir || 1, color, enemy);
+    } else if (ability === 'void_zone') {
+      this._vfxVoidZone(x, y, enemy);
+    }
+  }
+
+  // ── Cleaving Spin: whirling 360° slash arcs ──
+  _vfxCleavingSpin(cx, cy, color, enemy) {
+    // Double rotating arcs
+    for (let ring = 0; ring < 2; ring++) {
+      const gfx = this.scene.add.graphics();
+      gfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      const r = 24 + ring * 8;
+      gfx.lineStyle(3 - ring, ring === 0 ? 0xffffff : color, 0.8 - ring * 0.3);
+      gfx.beginPath();
+      const start = ring * 1.2;
+      gfx.arc(cx, cy - 10, r, start, start + 4.5);
+      gfx.strokePath();
+      this.scene.tweens.add({
+        targets: gfx, alpha: 0, angle: 90 * (ring === 0 ? 1 : -1),
+        duration: 350, onComplete: () => gfx.destroy(),
+      });
+    }
+    // Spark ring burst
+    for (let i = 0; i < 10; i++) {
+      const angle = (i / 10) * Math.PI * 2;
+      const spark = this.scene.add.graphics();
+      spark.fillStyle(color, 0.9);
+      spark.fillCircle(0, 0, 1.5);
+      spark.setPosition(cx, cy - 10);
+      spark.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      this.scene.tweens.add({
+        targets: spark,
+        x: cx + Math.cos(angle) * 30,
+        y: cy - 10 + Math.sin(angle) * 12,
+        alpha: 0, duration: 250,
+        onComplete: () => spark.destroy(),
+      });
+    }
+  }
+
+  // ── Fire Breath: cone of layered fire particles ──
+  _vfxFireBreath(cx, cy, dir, color, enemy) {
+    const fireColors = [0xff2200, 0xff6600, 0xffaa00, 0xffdd44];
+    const coneLen = 55;
+    const spread = 35;
+    for (let i = 0; i < 20; i++) {
+      const t = Math.random();
+      const angle = (Math.random() - 0.5) * 0.8;
+      const fx = cx + dir * coneLen * t;
+      const fy = cy - 12 + Math.sin(angle) * spread * t;
+      const flame = this.scene.add.graphics();
+      flame.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      const fc = fireColors[Phaser.Math.Between(0, fireColors.length - 1)];
+      flame.fillStyle(fc, 0.8);
+      flame.fillCircle(0, 0, 1.5 + t * 2.5);
+      flame.setPosition(cx + dir * 8, cy - 12);
+      this.scene.tweens.add({
+        targets: flame,
+        x: fx, y: fy - Math.random() * 6,
+        alpha: 0, scaleX: 1.5 + t, scaleY: 1.2 + t * 0.5,
+        duration: 200 + t * 250,
+        delay: i * 15,
+        onComplete: () => flame.destroy(),
+      });
+    }
+    // Ground scorch
+    const scorch = this.scene.add.graphics();
+    scorch.fillStyle(0x332200, 0.3);
+    scorch.fillCircle(0, 0, 4);
+    scorch.setPosition(cx + dir * 30, cy);
+    scorch.setDepth(GAME_CONFIG.layers.groundDecor + 1);
+    scorch.setScale(3, 0.8);
+    this.scene.tweens.add({
+      targets: scorch, alpha: 0, delay: 1000, duration: 1500,
+      onComplete: () => scorch.destroy(),
+    });
+  }
+
+  // ── Ground Pound: concentric shockwaves + ice variant ──
+  _vfxGroundPound(cx, cy, color, enemy, isIce) {
+    const tint = isIce ? 0x88ddff : color;
+    // Concentric rings
+    for (let i = 0; i < 3; i++) {
+      const ring = this.scene.add.graphics();
+      ring.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      ring.lineStyle(2, i === 0 ? 0xffffff : tint, 0.7 - i * 0.15);
+      ring.strokeCircle(cx, cy, 4 + i * 2);
+      this.scene.tweens.add({
+        targets: ring,
+        scaleX: 6 + i * 2, scaleY: 2.5 + i * 0.5,
+        alpha: 0, duration: 350 + i * 80,
+        delay: i * 60,
+        onComplete: () => ring.destroy(),
+      });
+    }
+    // Ice crystals or rock debris
+    const count = isIce ? 8 : 6;
+    for (let i = 0; i < count; i++) {
+      const shard = this.scene.add.graphics();
+      shard.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      if (isIce) {
+        shard.fillStyle(0xaaddff, 0.8);
+        shard.fillTriangle(0, -4, -2, 2, 2, 2);
+      } else {
+        shard.fillStyle(0x887766, 0.8);
+        shard.fillRect(-1, -1, 3, 3);
+      }
+      const angle = (i / count) * Math.PI * 2;
+      shard.setPosition(cx, cy - 2);
+      this.scene.tweens.add({
+        targets: shard,
+        x: cx + Math.cos(angle) * 28,
+        y: cy + Math.sin(angle) * 10 - 8,
+        angle: Phaser.Math.Between(-180, 180),
+        alpha: 0, duration: 350,
+        onComplete: () => shard.destroy(),
+      });
+    }
+  }
+
+  // ── Magma Slam: fire + molten ground pool ──
+  _vfxMagmaSlam(cx, cy, dir, color, enemy) {
+    this._vfxFireBreath(cx, cy, dir, color, enemy);
+    // Molten pool
+    const pool = this.scene.add.graphics();
+    pool.fillStyle(0xff4400, 0.4);
+    pool.fillCircle(0, 0, 5);
+    pool.setPosition(cx + dir * 20, cy);
+    pool.setDepth(GAME_CONFIG.layers.groundDecor + 1);
+    pool.setScale(0.5, 0.3);
+    this.scene.tweens.add({
+      targets: pool, scaleX: 4, scaleY: 1.5, alpha: 0.6,
+      duration: 300,
+    });
+    this.scene.tweens.add({
+      targets: pool, alpha: 0, delay: 1500, duration: 1000,
+      onComplete: () => pool.destroy(),
+    });
+  }
+
+  // ── Water Surge: rushing wave line ──
+  _vfxWaterSurge(cx, cy, dir, color, enemy) {
+    for (let i = 0; i < 12; i++) {
+      const drop = this.scene.add.graphics();
+      drop.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      drop.fillStyle([0x44ddaa, 0x33ccbb, 0x88eeff][i % 3], 0.7);
+      drop.fillCircle(0, 0, 1.5 + Math.random() * 2);
+      drop.setPosition(cx + dir * 8, cy - 10 + (Math.random() - 0.5) * 14);
+      this.scene.tweens.add({
+        targets: drop,
+        x: cx + dir * (20 + i * 6 + Math.random() * 10),
+        y: drop.y + (Math.random() - 0.5) * 8 - 4,
+        alpha: 0, scaleX: 1.3, scaleY: 0.8,
+        duration: 200 + i * 30,
+        delay: i * 25,
+        onComplete: () => drop.destroy(),
+      });
+    }
+    // Splash at end
+    this.scene.time.delayedCall(200, () => {
+      const splash = this.scene.add.graphics();
+      splash.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      splash.lineStyle(2, 0x44ddaa, 0.6);
+      splash.strokeCircle(cx + dir * 60, cy - 6, 3);
+      this.scene.tweens.add({
+        targets: splash, scaleX: 4, scaleY: 2, alpha: 0,
+        duration: 250, onComplete: () => splash.destroy(),
+      });
+    });
+  }
+
+  // ── Void Zone: dark persistent pool with reaching tendrils ──
+  _vfxVoidZone(cx, cy, enemy) {
+    // Dark pool
+    const pool = this.scene.add.graphics();
+    pool.setDepth(GAME_CONFIG.layers.groundDecor + 2);
+    pool.fillStyle(0x220044, 0.5);
+    pool.fillCircle(0, 0, 8);
+    pool.setPosition(cx, cy);
+    pool.setScale(0.3, 0.2);
+    this.scene.tweens.add({
+      targets: pool, scaleX: 3.5, scaleY: 1.5, alpha: 0.6,
+      duration: 400,
+    });
+    this.scene.tweens.add({
+      targets: pool, alpha: 0, delay: 3000, duration: 800,
+      onComplete: () => pool.destroy(),
+    });
+
+    // Tendril particles rising from pool
+    const tendrilEvent = this.scene.time.addEvent({
+      delay: 200, repeat: 14,
+      callback: () => {
+        if (!this.scene) return;
+        for (let i = 0; i < 3; i++) {
+          const t = this.scene.add.graphics();
+          t.fillStyle([0x6622aa, 0x8844cc, 0x4411aa][i], 0.6);
+          t.fillCircle(0, 0, 1 + Math.random());
+          t.setPosition(cx + (Math.random() - 0.5) * 20, cy + (Math.random() - 0.5) * 6);
+          t.setDepth(GAME_CONFIG.layers.foregroundDecor);
+          this.scene.tweens.add({
+            targets: t, y: t.y - 10 - Math.random() * 12,
+            alpha: 0, scaleX: 0.5, scaleY: 2,
+            duration: 300 + Math.random() * 200,
+            onComplete: () => t.destroy(),
+          });
+        }
+      },
+    });
+    this.scene.time.delayedCall(3200, () => tendrilEvent.destroy());
+  }
+
+  /** Boss swoop — bright dive streak */
+  onEnemySwoop(data) {
+    if (!this.scene) return;
+    const { enemy, targetX, targetY } = data;
+    if (!enemy) return;
+    const color = ENEMY_COLORS[enemy.enemyKey] || 0xff6644;
+
+    // Dive streak line from current position to target
+    const gfx = this.scene.add.graphics();
+    gfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    gfx.lineStyle(3, color, 0.8);
+    gfx.beginPath();
+    gfx.moveTo(enemy.x, enemy.y);
+    gfx.lineTo(targetX, targetY);
+    gfx.strokePath();
+    gfx.lineStyle(1, 0xffffff, 0.6);
+    gfx.beginPath();
+    gfx.moveTo(enemy.x, enemy.y);
+    gfx.lineTo(targetX, targetY);
+    gfx.strokePath();
+    this.scene.tweens.add({
+      targets: gfx, alpha: 0, duration: 400,
+      onComplete: () => gfx.destroy(),
+    });
+  }
+
+  /** Boss flight start — rising particles + wing glow */
+  onEnemyFlyStart(data) {
+    if (!this.scene) return;
+    const { enemy } = data;
+    if (!enemy) return;
+    const color = ENEMY_COLORS[enemy.enemyKey] || 0xff6644;
+
+    // Updraft particles
+    for (let i = 0; i < 10; i++) {
+      const p = this.scene.add.graphics();
+      p.fillStyle(color, 0.5);
+      p.fillCircle(0, 0, 1 + Math.random());
+      p.setPosition(
+        enemy.x + (Math.random() - 0.5) * 20,
+        enemy.groundY + 4
+      );
+      p.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      this.scene.tweens.add({
+        targets: p,
+        y: enemy.groundY - 20 - Math.random() * 15,
+        alpha: 0,
+        duration: 400 + Math.random() * 300,
+        delay: i * 40,
+        onComplete: () => p.destroy(),
+      });
+    }
+
+    // Ground dust ring
+    const ring = this.scene.add.graphics();
+    ring.setDepth(GAME_CONFIG.layers.groundDecor + 1);
+    ring.lineStyle(1, 0x998877, 0.5);
+    ring.strokeCircle(enemy.x, enemy.groundY, 4);
+    this.scene.tweens.add({
+      targets: ring, scaleX: 4, scaleY: 1.5, alpha: 0,
+      duration: 500, onComplete: () => ring.destroy(),
+    });
+  }
+
+  /** Boss flight end — landing dust */
+  onEnemyFlyEnd(data) {
+    if (!this.scene) return;
+    const { enemy } = data;
+    if (!enemy) return;
+    for (let i = 0; i < 6; i++) {
+      const dust = this.scene.add.graphics();
+      dust.fillStyle(0x998877, 0.4);
+      dust.fillCircle(0, 0, 1.5 + Math.random() * 2);
+      dust.setPosition(enemy.x + (Math.random() - 0.5) * 16, enemy.groundY);
+      dust.setDepth(GAME_CONFIG.layers.entities + enemy.groundY - 1);
+      this.scene.tweens.add({
+        targets: dust,
+        x: dust.x + (Math.random() - 0.5) * 20,
+        y: dust.y - Math.random() * 6,
+        alpha: 0, scaleX: 1.5, scaleY: 1,
+        duration: 300,
+        onComplete: () => dust.destroy(),
+      });
+    }
+  }
+
+  /** Boss enrage — red pulse + body aura */
+  onEnemyEnrage(data) {
+    if (!this.scene) return;
+    const { enemy } = data;
+    if (!enemy) return;
+
+    // Red pulse expanding
+    const pulse = this.scene.add.graphics();
+    pulse.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    pulse.fillStyle(0xff2222, 0.3);
+    pulse.fillCircle(enemy.x, enemy.groundY - 12, 8);
+    this.scene.tweens.add({
+      targets: pulse, scaleX: 6, scaleY: 4, alpha: 0,
+      duration: 600, onComplete: () => pulse.destroy(),
+    });
+
+    // Warning text
+    const text = this.scene.add.text(enemy.x, enemy.y - 36, 'ENRAGED!', {
+      fontSize: '7px', fontFamily: 'monospace', color: '#ff4444',
+      stroke: '#000000', strokeThickness: 2,
+    }).setOrigin(0.5).setDepth(GAME_CONFIG.layers.ui).setResolution(4);
+    this.scene.tweens.add({
+      targets: text, y: enemy.y - 48, alpha: 0,
+      duration: 1200, onComplete: () => text.destroy(),
+    });
+
+    // Rage particles for 2 seconds
+    const rageEvent = this.scene.time.addEvent({
+      delay: 100, repeat: 19,
+      callback: () => {
+        if (!this.scene || !enemy || enemy.dead) return;
+        const p = this.scene.add.graphics();
+        p.fillStyle([0xff2222, 0xff6644, 0xff4444][Phaser.Math.Between(0, 2)], 0.7);
+        p.fillCircle(0, 0, 1 + Math.random());
+        p.setPosition(
+          enemy.x + (Math.random() - 0.5) * 16,
+          enemy.groundY - Math.random() * 24
+        );
+        p.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        this.scene.tweens.add({
+          targets: p, y: p.y - 8, alpha: 0,
+          duration: 300, onComplete: () => p.destroy(),
+        });
+      },
+    });
+  }
+
   destroy() {
     this.scene.events.off('hitboxActive', this.onHitboxActive, this);
     this.scene.events.off('enemyAttack', this.onEnemyAttack, this);
@@ -2061,5 +3714,31 @@ export class VFXSystem {
     this.scene.events.off('priestBeam', this.onPriestBeam, this);
     this.scene.events.off('priestHealBlob', this.onPriestHealBlob, this);
     this.scene.events.off('priestHealLightning', this.onPriestHealLightning, this);
+    this.scene.events.off('raidBossTelegraph', this.onRaidBossTelegraph, this);
+    this.scene.events.off('raidBossHellfireDrop', this.onRaidBossHellfireDrop, this);
+    this.scene.events.off('raidBossHellfireImpact', this.onRaidBossHellfireImpact, this);
+    this.scene.events.off('raidBossShadowCleave', this.onRaidBossShadowCleave, this);
+    this.scene.events.off('raidBossFelStomp', this.onRaidBossFelStomp, this);
+    this.scene.events.off('raidBossChargeTrail', this.onRaidBossChargeTrail, this);
+    this.scene.events.off('raidBossChargeEnd', this.onRaidBossChargeEnd, this);
+    this.scene.events.off('raidBossTrailFade', this.onRaidBossTrailFade, this);
+    this.scene.events.off('priestPenance', this.onPriestPenance, this);
+    this.scene.events.off('priestHymnHeal', this.onPriestHymnHeal, this);
+    this.scene.events.off('priestRadiance', this.onPriestRadiance, this);
+    this.scene.events.off('priestRadianceTick', this.onPriestRadianceTick, this);
+    this.scene.events.off('priestHolyFirePillar', this.onPriestHolyFirePillar, this);
+    this.scene.events.off('priestSpiritLink', this.onPriestSpiritLink, this);
+    this.scene.events.off('priestLightningSmite', this.onPriestLightningSmite, this);
+    this.scene.events.off('enemyDash', this.onEnemyDash, this);
+    this.scene.events.off('enemyDashEnd', this.onEnemyDashEnd, this);
+    this.scene.events.off('enemyAfterimage', this.onEnemyAfterimage, this);
+    this.scene.events.off('enemyJumpStart', this.onEnemyJumpStart, this);
+    this.scene.events.off('enemyJumpSlam', this.onEnemyJumpSlam, this);
+    this.scene.events.off('enemyDodge', this.onEnemyDodge, this);
+    this.scene.events.off('enemySpecial', this.onEnemySpecial, this);
+    this.scene.events.off('enemySwoop', this.onEnemySwoop, this);
+    this.scene.events.off('enemyFlyStart', this.onEnemyFlyStart, this);
+    this.scene.events.off('enemyFlyEnd', this.onEnemyFlyEnd, this);
+    this.scene.events.off('enemyEnrage', this.onEnemyEnrage, this);
   }
 }

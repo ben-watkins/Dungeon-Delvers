@@ -647,7 +647,76 @@ export class Player extends Phaser.GameObjects.Container {
           const special = this.classData.specials.special4;
           this.cooldowns.special4 = special.cooldown;
           this.fsm.locked = true;
+          this.special4Class = this.classKey;
 
+          if (this.classKey === 'priest') {
+            // --- PRIEST: Penance — 5 rapid holy bolts at enemy ---
+            this.sprite.play(`${this.classKey}_special2`, true);
+            this.fsm.locked = true;
+            this.scene.events.emit('playerAttack');
+
+            // Auto-face tab target
+            if (this.tabTarget && this.tabTarget.hp > 0) {
+              this.facingRight = this.tabTarget.x > this.x;
+              this.sprite.setFlipX(!this.facingRight);
+            }
+
+            const boltCount = special.boltCount || 5;
+            const boltDelay = special.boltDelay || 130;
+            for (let i = 0; i < boltCount; i++) {
+              this.scene.time.delayedCall(i * boltDelay, () => {
+                if (this.dead || !this.scene) return;
+                const enemies = this.scene.getAliveEnemies();
+                if (enemies.length === 0) return;
+
+                // Prefer tab target, fallback to closest
+                let target = this.tabTarget;
+                if (!target || target.hp <= 0) {
+                  let minD = Infinity;
+                  for (const e of enemies) {
+                    const d = Phaser.Math.Distance.Between(this.x, this.groundY, e.x, e.groundY);
+                    if (d < minD) { minD = d; target = e; }
+                  }
+                }
+                if (!target || target.hp <= 0) return;
+
+                const dmg = special.damage * this.power * 10;
+                target.takeDamage(dmg, { x: 0, y: 0 }, 80);
+                this.scene.events.emit('priestPenance', {
+                  source: this, target, boltIndex: i, totalBolts: boltCount,
+                });
+              });
+            }
+
+            this.scene.time.delayedCall(boltCount * boltDelay + 300, () => {
+              if (this.fsm.is('special4') && !this.dead) {
+                this.fsm.locked = false;
+                this.fsm.transition('idle');
+              }
+            });
+            return;
+
+          } else if (this.classKey === 'mage') {
+            // --- MAGE: Frost Nova — instant AoE stun around caster ---
+            this.sprite.play(`${this.classKey}_special1`, true);
+
+            // Damage + stun handled by CombatSystem via playerSpecial event
+            this.scene.events.emit('playerSpecial', {
+              player: this, special, key: 'special4',
+            });
+            this.scene.cameras.main.shake(100, 0.006);
+
+            this.sprite.once('animationcomplete', () => {
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            });
+            this.scene.time.delayedCall(800, () => {
+              if (this.fsm.is('special4')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+            });
+            return;
+          }
+
+          // --- WARRIOR: Shield Charge ---
           // Determine charge target
           let targetX = this.x + (this.facingRight ? 120 : -120);
           let targetY = this.groundY;
@@ -685,6 +754,9 @@ export class Player extends Phaser.GameObjects.Container {
           this.scene.events.emit('playerAttack');
         },
         update(dt) {
+          // Mage Frost Nova and Priest Penance have no update logic — handled in enter()
+          if (this.special4Class === 'mage' || this.special4Class === 'priest') return;
+
           const dx = this.chargeTargetX - this.x;
           const dy = this.chargeTargetY - this.groundY;
           const dist = Math.sqrt(dx * dx + dy * dy);
@@ -775,7 +847,42 @@ export class Player extends Phaser.GameObjects.Container {
       special5: {
         enter() {
           const special = this.classData.specials.special5;
-          this.fsm.locked = false; // Allow movement during whirlwind
+          this.cooldowns.special5 = special.cooldown;
+          this.fsm.locked = false; // Allow movement during channel
+
+          if (this.classKey === 'priest') {
+            // --- PRIEST: Hymn of Hope — channeled AoE heal ---
+            this.hymnSpecial = special;
+            this.hymnTickTimer = 0;
+            this.hymnDuration = 0;
+            this.hymnMaxDuration = special.duration || 3500;
+            this.hymnAngle = 0;
+            this.isHymnChannel = true;
+
+            this.sprite.play(`${this.classKey}_special1`, true);
+            this.sprite.anims.msPerFrame = 80;
+            this.sprite.setTint(0xffffdd);
+
+            // Golden aura gfx
+            this.whirlwindGfx = this.scene.add.graphics();
+            this.whirlwindGfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+            // Rising golden motes
+            this.whirlwindParticles = this.scene.add.particles(this.x, this.groundY - 10, 'vfx_circle', {
+              speed: { min: 8, max: 22 },
+              angle: { min: 240, max: 300 },
+              lifespan: 500,
+              tint: [0xffffaa, 0xffdd66, 0xffffff],
+              alpha: { start: 0.7, end: 0 },
+              scale: { start: 0.6, end: 0.15 },
+              frequency: 50,
+              emitting: true,
+            });
+            this.whirlwindParticles.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+            this.scene.events.emit('priestHymnStart', { player: this });
+            return;
+          }
 
           // Auto-face tab target
           if (this.tabTarget && this.tabTarget.hp > 0) {
@@ -787,6 +894,7 @@ export class Player extends Phaser.GameObjects.Container {
           this.whirlwindAngle = 0;
           this.whirlwindDuration = 0;
           this.whirlwindMaxDuration = 5000; // 5 second max
+          this.isHymnChannel = false;
 
           // Play attack anim looping fast for spinning look
           this.sprite.play(`${this.classKey}_atk1`, true);
@@ -815,12 +923,88 @@ export class Player extends Phaser.GameObjects.Container {
           this.whirlwindParticles.setDepth(GAME_CONFIG.layers.foregroundDecor);
         },
         update(dt) {
+          // ── PRIEST: Hymn of Hope channel ──
+          if (this.isHymnChannel) {
+            this.hymnDuration += dt;
+            this.hymnAngle += dt * 0.004;
+            if (!this.keys.special5.isDown || this.hymnDuration >= this.hymnMaxDuration) {
+              this.fsm.transition('idle');
+              return;
+            }
+            this.handleMovementInput(dt);
+
+            // Draw golden aura rings
+            const cx = this.x;
+            const cy = this.groundY - 16;
+            if (this.whirlwindGfx) {
+              this.whirlwindGfx.clear();
+              // Inner radiant ring
+              this.whirlwindGfx.lineStyle(2, 0xffffaa, 0.6 + Math.sin(this.hymnAngle * 3) * 0.2);
+              this.whirlwindGfx.beginPath();
+              for (let i = 0; i < 24; i++) {
+                const a = this.hymnAngle + (i / 24) * Math.PI * 2;
+                const r = 16 + Math.sin(a * 3) * 3;
+                const px = cx + Math.cos(a) * r;
+                const py = cy + Math.sin(a) * r * 0.35;
+                if (i === 0) this.whirlwindGfx.moveTo(px, py);
+                else this.whirlwindGfx.lineTo(px, py);
+              }
+              this.whirlwindGfx.closePath();
+              this.whirlwindGfx.strokePath();
+
+              // Outer glow ring
+              this.whirlwindGfx.lineStyle(1, 0xffdd44, 0.3);
+              this.whirlwindGfx.beginPath();
+              for (let i = 0; i < 24; i++) {
+                const a = -this.hymnAngle * 0.7 + (i / 24) * Math.PI * 2;
+                const r = 22 + Math.sin(a * 2) * 4;
+                const px = cx + Math.cos(a) * r;
+                const py = cy + Math.sin(a) * r * 0.35;
+                if (i === 0) this.whirlwindGfx.moveTo(px, py);
+                else this.whirlwindGfx.lineTo(px, py);
+              }
+              this.whirlwindGfx.closePath();
+              this.whirlwindGfx.strokePath();
+
+              // Core glow
+              this.whirlwindGfx.fillStyle(0xffffcc, 0.15 + Math.sin(this.hymnAngle * 4) * 0.08);
+              this.whirlwindGfx.fillCircle(cx, cy, 10);
+            }
+            if (this.whirlwindParticles) {
+              this.whirlwindParticles.setPosition(cx, cy + 6);
+            }
+
+            // Heal tick — always fires VFX, heals even at full for visual feedback
+            this.hymnTickTimer += dt;
+            const tickInterval = this.hymnSpecial.tickInterval || 350;
+            if (this.hymnTickTimer >= tickInterval) {
+              this.hymnTickTimer -= tickInterval;
+              const party = this.scene.getPartyMembers();
+              const healAmt = this.hymnSpecial.healPerTick || 25;
+              for (const member of party) {
+                if (member.hp <= 0) continue;
+                const healed = Math.min(member.maxHp - member.hp, healAmt);
+                member.hp = Math.min(member.maxHp, member.hp + healAmt);
+                this.scene.events.emit('priestHymnHeal', {
+                  healer: this, target: member, amount: healed > 0 ? healed : healAmt,
+                });
+              }
+            }
+
+            // Loop animation
+            if (!this.sprite.anims.isPlaying) {
+              this.sprite.play(`${this.classKey}_special1`, true);
+              this.sprite.anims.msPerFrame = 80;
+            }
+            return;
+          }
+
+          // ── WARRIOR / MAGE channel ──
           const special = this.whirlwindSpecial;
           this.whirlwindDuration += dt;
 
           // Stop: key released or max duration reached
           if (!this.keys.special5.isDown || this.whirlwindDuration >= this.whirlwindMaxDuration) {
-            this.cooldowns.special5 = special.cooldown;
             this.fsm.transition('idle');
             return;
           }
@@ -960,17 +1144,62 @@ export class Player extends Phaser.GameObjects.Container {
             this.whirlwindParticles.destroy();
             this.whirlwindParticles = null;
           }
+          // Priest hymn cleanup
+          if (this.isHymnChannel) {
+            this.sprite.clearTint();
+            this.isHymnChannel = false;
+          }
         },
         transitions: { idle: 'idle', hitstun: 'hitstun', death: 'death' },
       },
 
-      // ─── SPECIAL 6: Meteor Storm (Mage) ───
+      // ─── SPECIAL 6: Meteor Storm (Mage) / Radiance (Priest) ───
       special6: {
         enter() {
           const special = this.classData.specials.special6;
           if (!special) { this.fsm.transition('idle'); return; }
           this.cooldowns.special6 = special.cooldown;
           this.fsm.locked = true;
+
+          if (this.classKey === 'priest') {
+            // --- PRIEST: Power Word: Radiance — sunburst AoE HOT ---
+            this.sprite.play(`${this.classKey}_special2`, true);
+
+            // Instant heal
+            const party = this.scene.getPartyMembers();
+            for (const member of party) {
+              if (member.hp <= 0) continue;
+              member.hp = Math.min(member.maxHp, member.hp + (special.healAmount || 8));
+            }
+
+            this.scene.events.emit('priestRadiance', { player: this, special });
+
+            // HOT ticks
+            const ticks = special.hotTicks || 5;
+            const interval = special.hotInterval || 500;
+            for (let i = 1; i <= ticks; i++) {
+              this.scene.time.delayedCall(i * interval, () => {
+                if (this.dead || !this.scene) return;
+                const p = this.scene.getPartyMembers();
+                for (const member of p) {
+                  if (member.hp <= 0 || member.hp >= member.maxHp) continue;
+                  member.hp = Math.min(member.maxHp, member.hp + (special.healAmount || 8));
+                  this.scene.events.emit('priestRadianceTick', { target: member, amount: special.healAmount || 8 });
+                }
+              });
+            }
+
+            this.sprite.once('animationcomplete', () => {
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            });
+            this.scene.time.delayedCall(800, () => {
+              if (this.fsm.is('special6')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+            });
+            return;
+          }
+
+          // --- MAGE: Meteor Storm ---
           this.sprite.play(`${this.classKey}_special1`, true);
 
           this.scene.events.emit('playerSpecial', {
@@ -1012,13 +1241,74 @@ export class Player extends Phaser.GameObjects.Container {
         transitions: { idle: 'idle', hitstun: 'hitstun', death: 'death' },
       },
 
-      // ─── SPECIAL 7: Chain Lightning (Mage) ───
+      // ─── SPECIAL 7: Chain Lightning (Mage) / Holy Fire Storm (Priest) ───
       special7: {
         enter() {
           const special = this.classData.specials.special7;
           if (!special) { this.fsm.transition('idle'); return; }
           this.cooldowns.special7 = special.cooldown;
           this.fsm.locked = true;
+
+          if (this.classKey === 'priest') {
+            // --- PRIEST: Divine Storm — heal allies to full, then electrocute enemies ---
+            this.sprite.play(`${this.classKey}_special2`, true);
+
+            const party = this.scene.getPartyMembers();
+            const count = special.pillarCount || 7;
+            const delay = special.pillarDelay || 200;
+
+            // Check if all allies are full HP
+            const allFull = party.every(m => m.hp <= 0 || m.hp >= m.maxHp);
+
+            if (!allFull) {
+              // HEAL MODE — pillars of light heal each ally to full
+              for (let i = 0; i < count; i++) {
+                this.scene.time.delayedCall(i * delay, () => {
+                  if (this.dead || !this.scene) return;
+                  const targets = this.scene.getPartyMembers().filter(m => m.hp > 0);
+                  if (targets.length === 0) return;
+                  const target = targets[i % targets.length];
+                  const healed = target.maxHp - target.hp;
+                  target.hp = target.maxHp;
+                  this.scene.events.emit('priestHolyFirePillar', {
+                    x: target.x, y: target.groundY, index: i, isHeal: true,
+                  });
+                  if (healed > 0) {
+                    this.scene.events.emit('priestHymnHeal', {
+                      healer: this, target, amount: healed,
+                    });
+                  }
+                });
+              }
+            } else {
+              // SMITE MODE — all allies full, electrocute all enemies
+              for (let i = 0; i < count; i++) {
+                this.scene.time.delayedCall(i * delay, () => {
+                  if (this.dead || !this.scene) return;
+                  const enemies = this.scene.getAliveEnemies();
+                  if (enemies.length === 0) return;
+                  const target = enemies[i % enemies.length];
+                  const px = target.x + Phaser.Math.Between(-6, 6);
+                  const py = target.groundY;
+
+                  target.takeDamage(special.damage * this.power * 10, { x: 0, y: 0 }, 200);
+                  this.scene.events.emit('priestLightningSmite', {
+                    source: this, target, x: px, y: py, index: i,
+                  });
+                });
+              }
+            }
+
+            this.scene.time.delayedCall(count * delay + 500, () => {
+              if (this.fsm.is('special7') && !this.dead) {
+                this.fsm.locked = false;
+                this.fsm.transition('idle');
+              }
+            });
+            return;
+          }
+
+          // --- MAGE: Chain Lightning ---
           this.sprite.play(`${this.classKey}_special2`, true);
 
           this.scene.time.delayedCall(150, () => {
@@ -1078,12 +1368,47 @@ export class Player extends Phaser.GameObjects.Container {
         transitions: { idle: 'idle', hitstun: 'hitstun', death: 'death' },
       },
 
-      // ─── SPECIAL 8: Time Warp (Mage) ───
+      // ─── SPECIAL 8: Time Warp (Mage) / Spirit Link (Priest) ───
       special8: {
         enter() {
           const special = this.classData.specials.special8;
           if (!special) { this.fsm.transition('idle'); return; }
           this.cooldowns.special8 = special.cooldown;
+
+          if (this.classKey === 'priest') {
+            // --- PRIEST: Spirit Link — equalize HP across party ---
+            this.fsm.locked = true;
+            this.sprite.play(`${this.classKey}_special1`, true);
+
+            const party = this.scene.getPartyMembers();
+            const alive = party.filter(m => m.hp > 0);
+            if (alive.length > 1) {
+              // Calculate average HP percentage
+              let totalPct = 0;
+              for (const m of alive) totalPct += m.hp / m.maxHp;
+              const avgPct = totalPct / alive.length;
+
+              // Equalize everyone to average percentage
+              for (const m of alive) {
+                m.hp = Math.round(Math.min(m.maxHp, m.maxHp * avgPct));
+                if (m.hp < 1) m.hp = 1;
+              }
+            }
+
+            this.scene.events.emit('priestSpiritLink', {
+              player: this, targets: alive, duration: special.duration || 4000,
+            });
+            this.scene.cameras.main.shake(60, 0.003);
+
+            this.sprite.once('animationcomplete', () => {
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            });
+            this.scene.time.delayedCall(800, () => {
+              if (this.fsm.is('special8')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+            });
+            return;
+          }
           this.fsm.locked = true;
           this.sprite.play(`${this.classKey}_special1`, true);
 
@@ -1443,5 +1768,27 @@ export class Player extends Phaser.GameObjects.Container {
     } else if (serverAnim === 'attack' && !this.sprite.anims.currentAnim?.key?.includes('atk')) {
       this.sprite.play(`${this.classKey}_atk1`, true);
     }
+  }
+
+  /**
+   * Revive from death — restore full HP, brief invulnerability, return to idle.
+   */
+  revive() {
+    if (!this.scene) return;
+    this.dead = false;
+    this.hp = this.maxHp;
+    this.knockbackVelocity = { x: 0, y: 0 };
+    this.sprite.setVisible(true);
+    this.sprite.setAlpha(1);
+
+    // Brief invulnerability so you don't instantly die again
+    this.invulnerable = true;
+    this.invulnTimer = 2000;
+
+    // Reset FSM
+    this.fsm.locked = false;
+    this.fsm.forceState('idle');
+
+    this.scene.events.emit('playerRevive', this);
   }
 }

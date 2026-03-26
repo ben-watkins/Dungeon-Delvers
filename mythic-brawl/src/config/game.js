@@ -150,6 +150,52 @@ export const CLASSES = {
         duration: 3000,
         description: 'Levitate and lob healing orbs to all allies over 3 seconds.',
       },
+      special4: {
+        name: 'Penance',
+        key: 'priest_penance',
+        cooldown: 5000,
+        damage: 2.5,
+        boltCount: 5,
+        boltDelay: 130,
+        range: 110,
+        description: 'Channel 5 rapid holy bolts at an enemy. Each heals allies via Atonement.',
+      },
+      special5: {
+        name: 'Hymn of Hope',
+        key: 'priest_hymn',
+        cooldown: 9000,
+        healPerTick: 25,
+        tickInterval: 350,
+        duration: 4000,
+        description: 'Channel a radiant hymn. Hold to heal all allies to full over time.',
+      },
+      special6: {
+        name: 'Power Word: Radiance',
+        key: 'priest_radiance',
+        cooldown: 8000,
+        healAmount: 8,
+        hotTicks: 5,
+        hotInterval: 500,
+        description: 'Sunburst of golden light. Heals all allies instantly and over time.',
+      },
+      special7: {
+        name: 'Divine Storm',
+        key: 'priest_divinestorm',
+        cooldown: 7000,
+        healAmount: 999,
+        damage: 3.5,
+        pillarCount: 7,
+        pillarDelay: 200,
+        range: 120,
+        description: 'Pillars of light heal all allies to full. If already full, electrocutes enemies instead.',
+      },
+      special8: {
+        name: 'Spirit Link',
+        key: 'priest_spiritlink',
+        cooldown: 15000,
+        duration: 4000,
+        description: 'Golden chains link all allies — equalizes HP across the party.',
+      },
     },
     passives: {
       atonement: {
@@ -420,7 +466,7 @@ export const DUNGEONS = {
       { type: 'arena', enemies: ['imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight'] },
       { type: 'hallway', enemies: ['imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight'] },
       { type: 'arena', enemies: ['imp', 'imp', 'imp', 'imp', 'hellknight', 'hellknight', 'hellknight', 'hellknight'] },
-      { type: 'boss', boss: 'pitlord' },
+      { type: 'boss', boss: 'pitlord', width: 720 },
     ],
   },
 
@@ -542,6 +588,7 @@ export const DUNGEONS = {
  * Base stats for enemy types. Scaled by keystone level.
  */
 export const ENEMIES = {
+  // ─── DEADMINES / HELLSCAPE ─────────────────────────────────
   imp: {
     name: 'Imp',
     type: 'trash',
@@ -551,6 +598,15 @@ export const ENEMIES = {
     aggroRange: 120,
     attackRange: 18,
     attackCooldown: 600,
+    ai: {
+      dashSpeed: 260, dashDist: 38, dashCooldown: 2200,
+      dodgeChance: 0.35, dodgeDist: 28, dodgeCooldown: 1800,
+      jumpHeight: 24, jumpCooldown: 4500, jumpDamage: 0.06,
+      comboChance: 0, comboHits: 1,
+      specialCooldown: 0, specialAbility: null,
+      aggressiveness: 0.85, flankWeight: 0.7,
+      canFly: false,
+    },
   },
   hellknight: {
     name: 'Hellknight',
@@ -561,24 +617,52 @@ export const ENEMIES = {
     aggroRange: 140,
     attackRange: 24,
     attackCooldown: 1400,
+    ai: {
+      dashSpeed: 220, dashDist: 55, dashCooldown: 3500,
+      dodgeChance: 0.18, dodgeDist: 24, dodgeCooldown: 2800,
+      jumpHeight: 0, jumpCooldown: 0, jumpDamage: 0,
+      comboChance: 0.5, comboHits: 2,
+      specialCooldown: 7000, specialAbility: 'cleaving_spin',
+      aggressiveness: 0.7, flankWeight: 0.5,
+      canFly: false,
+    },
   },
   pitlord: {
     name: 'Pitlord',
     type: 'boss',
     size: 'large',
     frameSize: 64,
-    stats: { hp: 750, speed: 35, power: 0.1, defense: 1.6 },
+    bossScale: 3.0,
+    stats: { hp: 3000, speed: 18, power: 0.12, defense: 2.0 },
     attacks: ['pitlord_cleave', 'pitlord_stomp'],
     phases: [
-      { hpThreshold: 0.6, attack: 'pitlord_hellfire' },
-      { hpThreshold: 0.3, attack: 'pitlord_enrage' },
+      { hpThreshold: 0.7, buff: 'hellfire' },
+      { hpThreshold: 0.4, buff: 'meteor_phase' },
+      { hpThreshold: 0.15, buff: 'enrage' },
     ],
-    aggroRange: 160,
-    attackRange: 30,
-    attackCooldown: 1600,
+    aggroRange: 300,
+    attackRange: 40,
+    attackCooldown: 2000,
+    ai: {
+      dashSpeed: 0, dashDist: 0, dashCooldown: 0,
+      dodgeChance: 0, dodgeDist: 0, dodgeCooldown: 0,
+      jumpHeight: 40, jumpCooldown: 8000, jumpDamage: 0.25,
+      comboChance: 0.35, comboHits: 2,
+      specialCooldown: 6000, specialAbility: 'fire_breath',
+      aggressiveness: 0.5, flankWeight: 0,
+      canFly: true, flyHeight: 35, swoopCooldown: 9000, swoopDamage: 0.28,
+      // Raid boss abilities — telegraphed, dodgeable
+      raidBoss: true,
+      abilities: {
+        hellfire_rain: { cooldown: 10000, damage: 0.15, count: 12, delay: 200, radius: 22, telegraphTime: 800 },
+        shadow_cleave: { cooldown: 7000, damage: 0.3, width: 120, telegraphTime: 1000 },
+        fel_stomp: { cooldown: 12000, damage: 0.2, radius: 60, stunDuration: 1500, telegraphTime: 1200 },
+        inferno_charge: { cooldown: 15000, damage: 0.35, speed: 300, telegraphTime: 900, trailDamage: 0.08 },
+      },
+    },
   },
 
-  // --- FROZEN CRYPT ---
+  // ─── FROZEN CRYPT ──────────────────────────────────────────
   frozen_wraith: {
     name: 'Frozen Wraith',
     type: 'trash',
@@ -588,6 +672,15 @@ export const ENEMIES = {
     aggroRange: 90,
     attackRange: 16,
     attackCooldown: 800,
+    ai: {
+      dashSpeed: 240, dashDist: 45, dashCooldown: 2000,
+      dodgeChance: 0.4, dodgeDist: 32, dodgeCooldown: 1600,
+      jumpHeight: 20, jumpCooldown: 5000, jumpDamage: 0.05,
+      comboChance: 0, comboHits: 1,
+      specialCooldown: 0, specialAbility: null,
+      aggressiveness: 0.75, flankWeight: 0.65,
+      canFly: false,
+    },
   },
   frozen_golem: {
     name: 'Frozen Golem',
@@ -598,6 +691,15 @@ export const ENEMIES = {
     aggroRange: 80,
     attackRange: 22,
     attackCooldown: 2500,
+    ai: {
+      dashSpeed: 160, dashDist: 40, dashCooldown: 4000,
+      dodgeChance: 0.08, dodgeDist: 18, dodgeCooldown: 4000,
+      jumpHeight: 0, jumpCooldown: 0, jumpDamage: 0,
+      comboChance: 0.45, comboHits: 2,
+      specialCooldown: 6500, specialAbility: 'ground_pound',
+      aggressiveness: 0.6, flankWeight: 0.3,
+      canFly: false,
+    },
   },
   frozen_giant: {
     name: 'Frozen Giant',
@@ -607,15 +709,24 @@ export const ENEMIES = {
     stats: { hp: 600, speed: 15, power: 0.12, defense: 1.8 },
     attacks: ['pitlord_cleave', 'pitlord_stomp'],
     phases: [
-      { hpThreshold: 0.5, attack: 'pitlord_hellfire' },
-      { hpThreshold: 0.2, attack: 'pitlord_enrage' },
+      { hpThreshold: 0.5, buff: 'blizzard' },
+      { hpThreshold: 0.2, buff: 'enrage' },
     ],
     aggroRange: 120,
     attackRange: 28,
     attackCooldown: 2800,
+    ai: {
+      dashSpeed: 0, dashDist: 0, dashCooldown: 0,
+      dodgeChance: 0, dodgeDist: 0, dodgeCooldown: 0,
+      jumpHeight: 30, jumpCooldown: 7000, jumpDamage: 0.18,
+      comboChance: 0.35, comboHits: 2,
+      specialCooldown: 9000, specialAbility: 'ice_shatter',
+      aggressiveness: 0.55, flankWeight: 0,
+      canFly: false,
+    },
   },
 
-  // --- INFERNAL FORGE ---
+  // ─── INFERNAL FORGE ────────────────────────────────────────
   forge_imp: {
     name: 'Forge Imp',
     type: 'trash',
@@ -625,6 +736,15 @@ export const ENEMIES = {
     aggroRange: 85,
     attackRange: 16,
     attackCooldown: 850,
+    ai: {
+      dashSpeed: 230, dashDist: 35, dashCooldown: 2400,
+      dodgeChance: 0.3, dodgeDist: 26, dodgeCooldown: 2000,
+      jumpHeight: 22, jumpCooldown: 4800, jumpDamage: 0.06,
+      comboChance: 0, comboHits: 1,
+      specialCooldown: 0, specialAbility: null,
+      aggressiveness: 0.8, flankWeight: 0.65,
+      canFly: false,
+    },
   },
   forge_golem: {
     name: 'Forge Golem',
@@ -635,6 +755,15 @@ export const ENEMIES = {
     aggroRange: 90,
     attackRange: 24,
     attackCooldown: 2200,
+    ai: {
+      dashSpeed: 180, dashDist: 50, dashCooldown: 3800,
+      dodgeChance: 0.1, dodgeDist: 20, dodgeCooldown: 3500,
+      jumpHeight: 0, jumpCooldown: 0, jumpDamage: 0,
+      comboChance: 0.5, comboHits: 3,
+      specialCooldown: 7000, specialAbility: 'magma_slam',
+      aggressiveness: 0.65, flankWeight: 0.35,
+      canFly: false,
+    },
   },
   forge_infernal: {
     name: 'Forge Infernal',
@@ -644,15 +773,24 @@ export const ENEMIES = {
     stats: { hp: 700, speed: 12, power: 0.15, defense: 2.0 },
     attacks: ['pitlord_cleave', 'pitlord_stomp'],
     phases: [
-      { hpThreshold: 0.6, attack: 'pitlord_hellfire' },
-      { hpThreshold: 0.25, attack: 'pitlord_enrage' },
+      { hpThreshold: 0.6, buff: 'hellfire' },
+      { hpThreshold: 0.25, buff: 'enrage' },
     ],
     aggroRange: 130,
     attackRange: 30,
     attackCooldown: 2000,
+    ai: {
+      dashSpeed: 0, dashDist: 0, dashCooldown: 0,
+      dodgeChance: 0, dodgeDist: 0, dodgeCooldown: 0,
+      jumpHeight: 34, jumpCooldown: 5500, jumpDamage: 0.22,
+      comboChance: 0.4, comboHits: 2,
+      specialCooldown: 8500, specialAbility: 'fire_breath',
+      aggressiveness: 0.6, flankWeight: 0,
+      canFly: true, flyHeight: 30, swoopCooldown: 6500, swoopDamage: 0.25,
+    },
   },
 
-  // --- SUNKEN TEMPLE ---
+  // ─── SUNKEN TEMPLE ─────────────────────────────────────────
   temple_murloc: {
     name: 'Temple Murloc',
     type: 'trash',
@@ -662,6 +800,15 @@ export const ENEMIES = {
     aggroRange: 95,
     attackRange: 14,
     attackCooldown: 700,
+    ai: {
+      dashSpeed: 280, dashDist: 42, dashCooldown: 1800,
+      dodgeChance: 0.42, dodgeDist: 34, dodgeCooldown: 1400,
+      jumpHeight: 26, jumpCooldown: 3800, jumpDamage: 0.05,
+      comboChance: 0, comboHits: 1,
+      specialCooldown: 0, specialAbility: null,
+      aggressiveness: 0.9, flankWeight: 0.75,
+      canFly: false,
+    },
   },
   temple_naga: {
     name: 'Temple Naga',
@@ -672,6 +819,15 @@ export const ENEMIES = {
     aggroRange: 100,
     attackRange: 22,
     attackCooldown: 1800,
+    ai: {
+      dashSpeed: 200, dashDist: 48, dashCooldown: 3200,
+      dodgeChance: 0.22, dodgeDist: 28, dodgeCooldown: 2500,
+      jumpHeight: 0, jumpCooldown: 0, jumpDamage: 0,
+      comboChance: 0.55, comboHits: 3,
+      specialCooldown: 6000, specialAbility: 'water_surge',
+      aggressiveness: 0.7, flankWeight: 0.5,
+      canFly: false,
+    },
   },
   temple_horror: {
     name: 'Temple Horror',
@@ -681,12 +837,21 @@ export const ENEMIES = {
     stats: { hp: 800, speed: 10, power: 0.18, defense: 2.2 },
     attacks: ['pitlord_cleave', 'pitlord_stomp'],
     phases: [
-      { hpThreshold: 0.5, attack: 'pitlord_hellfire' },
-      { hpThreshold: 0.2, attack: 'pitlord_enrage' },
+      { hpThreshold: 0.5, buff: 'void_aura' },
+      { hpThreshold: 0.2, buff: 'enrage' },
     ],
     aggroRange: 140,
     attackRange: 32,
     attackCooldown: 2400,
+    ai: {
+      dashSpeed: 0, dashDist: 0, dashCooldown: 0,
+      dodgeChance: 0, dodgeDist: 0, dodgeCooldown: 0,
+      jumpHeight: 28, jumpCooldown: 6500, jumpDamage: 0.2,
+      comboChance: 0.45, comboHits: 2,
+      specialCooldown: 7500, specialAbility: 'void_zone',
+      aggressiveness: 0.55, flankWeight: 0,
+      canFly: true, flyHeight: 26, swoopCooldown: 7000, swoopDamage: 0.24,
+    },
   },
 };
 

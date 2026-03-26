@@ -79,9 +79,10 @@ const CLASS_STATS = {
   warrior: { hp: 150, speed: 86, power: 2.0, defense: 1.4 },
   priest: { hp: 90, speed: 86, power: 1.05, defense: 0.8 },
   rogue: { hp: 100, speed: 86, power: 8.0, defense: 0.9 },
+  mage: { hp: 80, speed: 90, power: 6.0, defense: 0.7 },
 };
 
-const AVAILABLE_CLASSES = ['warrior', 'priest', 'rogue'];
+const AVAILABLE_CLASSES = ['warrior', 'priest', 'rogue', 'mage'];
 
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -103,6 +104,10 @@ export class DungeonRoom extends Room {
     this.state.keystoneLevel = options.keystoneLevel || 2;
     this.state.gamePhase = 'waiting';
     this.state.hostId = '';
+
+    // Expose roomCode as metadata so filterBy can match joiners to this room
+    this.setMetadata({ roomCode: this.roomCode });
+    console.log(`Room created with code: ${this.roomCode}`);
 
     // Track which classes are taken
     this.takenClasses = new Set();
@@ -224,7 +229,7 @@ export class DungeonRoom extends Room {
     if (!this.hostId) {
       this.hostId = client.sessionId;
     }
-      this.state.hostId = this.hostId;
+    this.state.hostId = this.hostId;
 
     // Create player state
     const stats = CLASS_STATS[assignedClass] || CLASS_STATS.warrior;
@@ -251,7 +256,7 @@ export class DungeonRoom extends Room {
       isHost: client.sessionId === this.hostId,
     });
 
-    console.log(`Player joined: ${client.sessionId} as ${assignedClass} (${this.state.players.size}/${this.maxClients})`);
+    console.log(`Player joined room ${this.roomCode}: ${client.sessionId} as ${assignedClass} (${this.state.players.size}/${this.maxClients}) [host: ${this.hostId}]`);
   }
 
   onLeave(client, consented) {

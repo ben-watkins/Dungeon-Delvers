@@ -1,10 +1,10 @@
 /**
  * DUNGEON TIMER
- * 
+ *
  * M+ keystone timer that counts down.
- * Deaths add a time penalty.
+ * Deaths add a 10-second time penalty and trigger a 4-second respawn.
  * Timer determines if the key is upgraded (+1, +2, +3) at the end.
- * 
+ *
  * Thresholds:
  *   Completed in time       → +1 key upgrade
  *   40% time remaining      → +2 key upgrade
@@ -18,7 +18,8 @@ export class DungeonTimer {
     this.timeLimit = timeLimitSeconds * 1000;  // Convert to ms
     this.timeRemaining = this.timeLimit;
     this.deaths = 0;
-    this.deathPenalty = 5000;  // 5 seconds per death
+    this.deathPenalty = 10000;  // 10 seconds per death
+    this.respawnDelay = 4000;   // 4 seconds to revive
     this.running = false;
     this.completed = false;
 
@@ -39,6 +40,14 @@ export class DungeonTimer {
     this.scene.events.emit('timerPenalty', {
       deaths: this.deaths,
       penalty: this.deathPenalty / 1000,
+    });
+
+    // Respawn after 4 seconds
+    this.scene.time.delayedCall(this.respawnDelay, () => {
+      if (!entity || !entity.scene) return;
+      if (entity.revive) {
+        entity.revive();
+      }
     });
   }
 

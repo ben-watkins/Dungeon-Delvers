@@ -128,7 +128,7 @@ export class CombatSystem {
     if (special.damage) {
       for (const enemy of enemies) {
         const dist = Phaser.Math.Distance.Between(player.x, player.groundY, enemy.x, enemy.groundY);
-        const range = special.range || (special.teleport ? 100 : 40);
+        const range = special.range || special.radius || (special.teleport ? 100 : 40);
         if (dist <= range) {
           let knockForce = special.knockback || 0;
           let stunTime = special.stun || 300;

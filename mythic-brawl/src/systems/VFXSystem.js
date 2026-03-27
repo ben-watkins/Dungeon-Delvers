@@ -15,6 +15,8 @@ const CLASS_COLORS = {
   priest: 0xeedd88,    // golden
   rogue: 0x88ccff,     // icy blue
   mage: 0xaa66ff,      // arcane purple — combo attacks glow purple
+  warlock: 0x88ff44,   // fel green
+  hunter: 0x44bbaa,    // teal/cyan
 };
 
 // Enemy swipe colors — themed per dungeon
@@ -59,6 +61,26 @@ export class VFXSystem {
     scene.events.on('priestHolyFirePillar', this.onPriestHolyFirePillar, this);
     scene.events.on('priestSpiritLink', this.onPriestSpiritLink, this);
     scene.events.on('priestLightningSmite', this.onPriestLightningSmite, this);
+
+    // Warlock ability VFX events
+    scene.events.on('warlockDrainLife', this.onWarlockDrainLife, this);
+    scene.events.on('warlockFear', this.onWarlockFear, this);
+    scene.events.on('warlockRainTick', this.onWarlockRainTick, this);
+    scene.events.on('warlockImpSpawn', this.onWarlockImpSpawn, this);
+    scene.events.on('warlockImpAttack', this.onWarlockImpAttack, this);
+    scene.events.on('warlockShadowfury', this.onWarlockShadowfury, this);
+    scene.events.on('warlockImmolate', this.onWarlockImmolate, this);
+    scene.events.on('warlockImmolateBurst', this.onWarlockImmolateBurst, this);
+
+    // Hunter ability VFX events
+    scene.events.on('hunterDisengage', this.onHunterDisengage, this);
+    scene.events.on('hunterTrapPlace', this.onHunterTrapPlace, this);
+    scene.events.on('hunterTrapTrigger', this.onHunterTrapTrigger, this);
+    scene.events.on('hunterRapidFireTick', this.onHunterRapidFireTick, this);
+    scene.events.on('hunterPetSpawn', this.onHunterPetSpawn, this);
+    scene.events.on('hunterPetAttack', this.onHunterPetAttack, this);
+    scene.events.on('hunterVolleyArrow', this.onHunterVolleyArrow, this);
+    scene.events.on('hunterKillShot', this.onHunterKillShot, this);
 
     // Raid boss ability VFX events
     scene.events.on('raidBossTelegraph', this.onRaidBossTelegraph, this);
@@ -185,6 +207,18 @@ export class VFXSystem {
       // Time Warp handled by timeWarp event
     } else if (cls === 'mage') {
       this.spawnNovaRing(player.x, player.groundY - 8, 0xaa66ff);
+    } else if (cls === 'warlock' && key === 'special1') {
+      this.spawnWarlockShadowBolts(player);
+    } else if (cls === 'warlock' && key === 'special2') {
+      this.spawnWarlockFelFireball(player);
+    } else if (cls === 'warlock') {
+      this.spawnNovaRing(player.x, player.groundY - 8, 0x88ff44);
+    } else if (cls === 'hunter' && key === 'special1') {
+      this.spawnHunterChargedArrow(player);
+    } else if (cls === 'hunter' && key === 'special2') {
+      this.spawnHunterArrowFan(player);
+    } else if (cls === 'hunter') {
+      this.spawnNovaRing(player.x, player.groundY - 8, 0x44bbaa);
     }
   }
 
@@ -2611,6 +2645,1673 @@ export class VFXSystem {
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  WARLOCK & HUNTER VFX
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Warlock special1 — 4 green shadow bolts streaking to target area.
+   */
+  spawnWarlockShadowBolts(player) {
+    if (!this.scene || !player) return;
+    const dir = player.facingRight ? 1 : -1;
+    for (let i = 0; i < 4; i++) {
+      this.scene.time.delayedCall(i * 100, () => {
+        if (!this.scene || !player || !player.scene) return;
+        const bolt = this.scene.add.graphics();
+        bolt.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+        // Outer green glow
+        bolt.fillStyle(0x88ff44, 0.7);
+        bolt.fillCircle(0, 0, 5);
+        // Inner bright core
+        bolt.fillStyle(0xccffaa, 1);
+        bolt.fillCircle(0, 0, 2);
+        // Shadow halo
+        bolt.fillStyle(0x6622aa, 0.3);
+        bolt.fillCircle(0, 0, 7);
+
+        const sx = player.x + dir * 8;
+        const sy = player.groundY - 16 + (i - 1.5) * 6;
+        bolt.setPosition(sx, sy);
+
+        const trail = this.scene.add.graphics();
+        trail.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+        const endX = sx + dir * (90 + Math.random() * 30);
+        const endY = sy + (Math.random() - 0.5) * 16;
+        this.scene.tweens.add({
+          targets: bolt,
+          x: endX, y: endY,
+          duration: 220,
+          ease: 'Quad.easeIn',
+          onUpdate: () => {
+            trail.clear();
+            trail.lineStyle(3, 0x88ff44, 0.3);
+            trail.beginPath();
+            trail.moveTo(sx, sy);
+            trail.lineTo(bolt.x, bolt.y);
+            trail.strokePath();
+            trail.lineStyle(1, 0xccffaa, 0.6);
+            trail.beginPath();
+            trail.moveTo(sx, sy);
+            trail.lineTo(bolt.x, bolt.y);
+            trail.strokePath();
+          },
+          onComplete: () => {
+            // Impact burst — green + purple
+            const impact = this.scene.add.graphics();
+            impact.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+            impact.fillStyle(0x88ff44, 0.9);
+            impact.fillCircle(endX, endY, 6);
+            impact.fillStyle(0x6622aa, 0.4);
+            impact.fillCircle(endX, endY, 10);
+            this.scene.tweens.add({
+              targets: impact, alpha: 0, scaleX: 2.5, scaleY: 2.5,
+              duration: 180, onComplete: () => impact.destroy(),
+            });
+            // Green sparks
+            const sparks = this.scene.add.particles(endX, endY, 'vfx_pixel_4', {
+              speed: { min: 20, max: 50 },
+              angle: { min: 0, max: 360 },
+              lifespan: 200,
+              tint: [0x88ff44, 0x44cc22, 0xccffaa],
+              alpha: { start: 1, end: 0 },
+              emitting: false,
+            });
+            sparks.setDepth(GAME_CONFIG.layers.foregroundDecor);
+            sparks.explode(6);
+            this.scene.time.delayedCall(250, () => sparks.destroy());
+            bolt.destroy();
+            trail.destroy();
+          },
+        });
+      });
+    }
+  }
+
+  /**
+   * Warlock special2 — massive green fireball with trail.
+   */
+  spawnWarlockFelFireball(player) {
+    if (!this.scene || !player) return;
+    const dir = player.facingRight ? 1 : -1;
+    const sx = player.x + dir * 12;
+    const sy = player.groundY - 16;
+
+    // Main fireball
+    const fireball = this.scene.add.graphics();
+    fireball.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+    fireball.fillStyle(0x88ff44, 0.8);
+    fireball.fillCircle(0, 0, 10);
+    fireball.fillStyle(0xff6600, 0.5);
+    fireball.fillCircle(0, 0, 7);
+    fireball.fillStyle(0xffffff, 0.9);
+    fireball.fillCircle(0, 0, 3);
+    fireball.setPosition(sx, sy);
+
+    // Glow halo
+    const halo = this.scene.add.circle(sx, sy, 14, 0x88ff44, 0.3);
+    halo.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+
+    // Trail particles
+    const trail = this.scene.add.particles(sx, sy, 'vfx_circle', {
+      speed: { min: 5, max: 20 },
+      angle: dir > 0 ? { min: 150, max: 210 } : { min: -30, max: 30 },
+      lifespan: 350,
+      tint: [0x88ff44, 0x44cc22, 0xff6600],
+      alpha: { start: 0.8, end: 0 },
+      scale: { start: 1.2, end: 0.2 },
+      frequency: 15,
+      follow: fireball,
+    });
+    trail.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+    // Smoke trail
+    const smoke = this.scene.add.particles(sx, sy, 'vfx_pixel_4', {
+      speed: { min: 5, max: 15 },
+      angle: { min: 240, max: 300 },
+      lifespan: 400,
+      tint: 0x336622,
+      alpha: { start: 0.4, end: 0 },
+      scale: { start: 1, end: 2 },
+      frequency: 25,
+      follow: fireball,
+    });
+    smoke.setDepth(GAME_CONFIG.layers.foregroundDecor - 1);
+
+    const endX = sx + dir * 160;
+    this.scene.tweens.add({
+      targets: [fireball, halo],
+      x: endX,
+      duration: 400,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        // Massive impact explosion
+        const flash = this.scene.add.circle(endX, sy, 6, 0xffffff, 1);
+        flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+        this.scene.tweens.add({
+          targets: flash, scaleX: 5, scaleY: 5, alpha: 0,
+          duration: 200, onComplete: () => flash.destroy(),
+        });
+
+        // Green explosion ring
+        const ring = this.scene.add.circle(endX, sy, 10, 0x88ff44, 0);
+        ring.setStrokeStyle(3, 0x88ff44, 0.9);
+        ring.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+        this.scene.tweens.add({
+          targets: ring, scaleX: 4, scaleY: 4, alpha: 0,
+          duration: 300, onComplete: () => ring.destroy(),
+        });
+
+        // Orange fire ring
+        const ring2 = this.scene.add.circle(endX, sy, 8, 0xff6600, 0);
+        ring2.setStrokeStyle(2, 0xff6600, 0.7);
+        ring2.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+        this.scene.tweens.add({
+          targets: ring2, scaleX: 3, scaleY: 3, alpha: 0,
+          duration: 250, delay: 50, onComplete: () => ring2.destroy(),
+        });
+
+        // Debris sparks
+        const debris = this.scene.add.particles(endX, sy, 'vfx_pixel_4', {
+          speed: { min: 40, max: 100 },
+          angle: { min: 0, max: 360 },
+          lifespan: 400,
+          tint: [0x88ff44, 0xff6600, 0xffaa00],
+          alpha: { start: 1, end: 0 },
+          gravityY: 80,
+          emitting: false,
+        });
+        debris.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+        debris.explode(16);
+        this.scene.time.delayedCall(450, () => debris.destroy());
+
+        this.scene.cameras.main.shake(120, 0.006);
+        fireball.destroy();
+        halo.destroy();
+        trail.destroy();
+        smoke.destroy();
+      },
+    });
+  }
+
+  /**
+   * Hunter special1 — charged arrow with golden trail.
+   */
+  spawnHunterChargedArrow(player) {
+    if (!this.scene || !player) return;
+    const dir = player.facingRight ? 1 : -1;
+    const sx = player.x + dir * 10;
+    const sy = player.groundY - 14;
+
+    // Muzzle flash
+    const muzzle = this.scene.add.circle(sx, sy, 4, 0xffffcc, 0.9);
+    muzzle.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+    this.scene.tweens.add({
+      targets: muzzle, scaleX: 3, scaleY: 3, alpha: 0,
+      duration: 120, onComplete: () => muzzle.destroy(),
+    });
+
+    // Arrow head
+    const arrow = this.scene.add.graphics();
+    arrow.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+    arrow.fillStyle(0xffdd44, 1);
+    arrow.fillTriangle(dir * 6, 0, -dir * 2, -3, -dir * 2, 3);
+    arrow.fillStyle(0x44bbaa, 0.8);
+    arrow.fillRect(-dir * 2, -1, -dir * 12, 2);
+    arrow.setPosition(sx, sy);
+
+    // Golden trail
+    const trail = this.scene.add.particles(sx, sy, 'vfx_circle', {
+      speed: { min: 5, max: 15 },
+      angle: dir > 0 ? { min: 160, max: 200 } : { min: -20, max: 20 },
+      lifespan: 300,
+      tint: [0xffdd44, 0xffaa22, 0x44bbaa],
+      alpha: { start: 0.9, end: 0 },
+      scale: { start: 0.8, end: 0.1 },
+      frequency: 10,
+      follow: arrow,
+    });
+    trail.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+
+    // Sparkle trail
+    const sparkles = this.scene.add.particles(sx, sy, 'vfx_pixel_4', {
+      speed: { min: 3, max: 10 },
+      angle: { min: 0, max: 360 },
+      lifespan: 250,
+      tint: 0xffffff,
+      alpha: { start: 0.7, end: 0 },
+      scale: { start: 0.5, end: 0 },
+      frequency: 20,
+      follow: arrow,
+    });
+    sparkles.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+    const endX = sx + dir * 140;
+    this.scene.tweens.add({
+      targets: arrow,
+      x: endX,
+      duration: 200,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        // Golden impact flash
+        const flash = this.scene.add.circle(endX, sy, 4, 0xffdd44, 1);
+        flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+        this.scene.tweens.add({
+          targets: flash, scaleX: 4, scaleY: 4, alpha: 0,
+          duration: 180, onComplete: () => flash.destroy(),
+        });
+
+        // Impact ring
+        const ring = this.scene.add.circle(endX, sy, 6, 0x44bbaa, 0);
+        ring.setStrokeStyle(2, 0x44bbaa, 0.8);
+        ring.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+        this.scene.tweens.add({
+          targets: ring, scaleX: 3, scaleY: 3, alpha: 0,
+          duration: 250, onComplete: () => ring.destroy(),
+        });
+
+        // Impact sparks
+        const sparks = this.scene.add.particles(endX, sy, 'vfx_pixel_4', {
+          speed: { min: 30, max: 60 },
+          angle: { min: 0, max: 360 },
+          lifespan: 250,
+          tint: [0xffdd44, 0x44bbaa],
+          alpha: { start: 1, end: 0 },
+          gravityY: 50,
+          emitting: false,
+        });
+        sparks.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+        sparks.explode(10);
+        this.scene.time.delayedCall(300, () => sparks.destroy());
+
+        arrow.destroy();
+        trail.destroy();
+        sparkles.destroy();
+      },
+    });
+  }
+
+  /**
+   * Hunter special2 — fan of 5 teal arrows spreading outward.
+   */
+  spawnHunterArrowFan(player) {
+    if (!this.scene || !player) return;
+    const dir = player.facingRight ? 1 : -1;
+    const sx = player.x + dir * 10;
+    const sy = player.groundY - 14;
+
+    // Muzzle flash
+    const muzzle = this.scene.add.circle(sx, sy, 5, 0x44bbaa, 0.8);
+    muzzle.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+    this.scene.tweens.add({
+      targets: muzzle, scaleX: 2.5, scaleY: 2.5, alpha: 0,
+      duration: 150, onComplete: () => muzzle.destroy(),
+    });
+
+    const angles = [-0.4, -0.2, 0, 0.2, 0.4];
+    for (let i = 0; i < 5; i++) {
+      this.scene.time.delayedCall(i * 40, () => {
+        if (!this.scene) return;
+        const angle = angles[i];
+        const arrow = this.scene.add.graphics();
+        arrow.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+        arrow.fillStyle(0x44bbaa, 1);
+        arrow.fillCircle(0, 0, 2.5);
+        arrow.fillStyle(0x88ffee, 0.8);
+        arrow.fillCircle(0, 0, 1);
+        arrow.setPosition(sx, sy);
+
+        const trail = this.scene.add.graphics();
+        trail.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+        const dist = 100 + Math.random() * 20;
+        const endX = sx + dir * dist * Math.cos(angle);
+        const endY = sy + dist * Math.sin(angle);
+        this.scene.tweens.add({
+          targets: arrow,
+          x: endX, y: endY,
+          duration: 200,
+          ease: 'Quad.easeIn',
+          onUpdate: () => {
+            trail.clear();
+            trail.lineStyle(2, 0x44bbaa, 0.4);
+            trail.beginPath();
+            trail.moveTo(sx, sy);
+            trail.lineTo(arrow.x, arrow.y);
+            trail.strokePath();
+            trail.lineStyle(1, 0x88ffee, 0.6);
+            trail.beginPath();
+            trail.moveTo(sx, sy);
+            trail.lineTo(arrow.x, arrow.y);
+            trail.strokePath();
+          },
+          onComplete: () => {
+            // Small teal impact
+            const impact = this.scene.add.circle(endX, endY, 3, 0x44bbaa, 0.8);
+            impact.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+            this.scene.tweens.add({
+              targets: impact, scaleX: 2, scaleY: 2, alpha: 0,
+              duration: 150, onComplete: () => impact.destroy(),
+            });
+            arrow.destroy();
+            trail.destroy();
+          },
+        });
+      });
+    }
+  }
+
+  // ─── WARLOCK ABILITY VFX ─────────────────────────────────────
+
+  /**
+   * Drain Life — wobbling green beam from caster to target with health orb return.
+   */
+  onWarlockDrainLife(data) {
+    if (!this.scene) return;
+    const { source, target, damage } = data;
+    if (!source || !target) return;
+
+    const sx = source.x;
+    const sy = source.groundY - 14;
+    const tx = target.x;
+    const ty = target.groundY - 12;
+
+    // Draw wobbling beam — outer green glow + inner white core
+    const beam = this.scene.add.graphics();
+    beam.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+
+    let elapsed = 0;
+    const beamTimer = this.scene.time.addEvent({
+      delay: 16,
+      repeat: 25,
+      callback: () => {
+        if (!this.scene) { beamTimer.destroy(); return; }
+        elapsed += 16;
+        beam.clear();
+        const segments = 12;
+        // Outer green glow
+        beam.lineStyle(4, 0x88ff44, 0.4);
+        beam.beginPath();
+        for (let s = 0; s <= segments; s++) {
+          const t = s / segments;
+          const bx = sx + (tx - sx) * t;
+          const by = sy + (ty - sy) * t + Math.sin(t * Math.PI * 4 + elapsed * 0.01) * 4;
+          if (s === 0) beam.moveTo(bx, by);
+          else beam.lineTo(bx, by);
+        }
+        beam.strokePath();
+        // Inner white core
+        beam.lineStyle(1.5, 0xffffff, 0.8);
+        beam.beginPath();
+        for (let s = 0; s <= segments; s++) {
+          const t = s / segments;
+          const bx = sx + (tx - sx) * t;
+          const by = sy + (ty - sy) * t + Math.sin(t * Math.PI * 4 + elapsed * 0.01) * 3;
+          if (s === 0) beam.moveTo(bx, by);
+          else beam.lineTo(bx, by);
+        }
+        beam.strokePath();
+      },
+    });
+    this.scene.time.delayedCall(450, () => {
+      beam.destroy();
+      beamTimer.destroy();
+    });
+
+    // Green sparkles at source connection
+    const srcSparkle = this.scene.add.particles(sx, sy, 'vfx_pixel_4', {
+      speed: { min: 8, max: 20 },
+      angle: { min: 0, max: 360 },
+      lifespan: 250,
+      tint: [0x88ff44, 0xccffaa],
+      alpha: { start: 0.8, end: 0 },
+      emitting: false,
+    });
+    srcSparkle.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    srcSparkle.explode(5);
+    this.scene.time.delayedCall(300, () => srcSparkle.destroy());
+
+    // Green sparkles at target connection
+    const tgtSparkle = this.scene.add.particles(tx, ty, 'vfx_pixel_4', {
+      speed: { min: 8, max: 20 },
+      angle: { min: 0, max: 360 },
+      lifespan: 250,
+      tint: [0x88ff44, 0x44cc22],
+      alpha: { start: 0.8, end: 0 },
+      emitting: false,
+    });
+    tgtSparkle.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    tgtSparkle.explode(5);
+    this.scene.time.delayedCall(300, () => tgtSparkle.destroy());
+
+    // Target dark tint
+    if (target.sprite) {
+      target.sprite.setTint(0x448844);
+      this.scene.time.delayedCall(300, () => {
+        if (target.sprite && !target.dead) target.sprite.clearTint();
+      });
+    }
+
+    // Health orb flying BACK from target to caster
+    this.scene.time.delayedCall(200, () => {
+      if (!this.scene) return;
+      const orb = this.scene.add.graphics();
+      orb.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+      orb.fillStyle(0x88ff44, 0.9);
+      orb.fillCircle(0, 0, 4);
+      orb.fillStyle(0xffffff, 0.7);
+      orb.fillCircle(0, 0, 1.5);
+      orb.setPosition(tx, ty);
+
+      const orbTrail = this.scene.add.particles(tx, ty, 'vfx_circle', {
+        speed: { min: 3, max: 8 },
+        lifespan: 200,
+        tint: [0x88ff44, 0x44cc22],
+        alpha: { start: 0.7, end: 0 },
+        scale: { start: 0.6, end: 0 },
+        frequency: 20,
+        follow: orb,
+      });
+      orbTrail.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+
+      this.scene.tweens.add({
+        targets: orb,
+        x: sx, y: sy,
+        duration: 350,
+        ease: 'Quad.easeIn',
+        onComplete: () => {
+          // Heal flash at caster
+          const healFlash = this.scene.add.circle(sx, sy, 5, 0x88ff44, 0.8);
+          healFlash.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+          this.scene.tweens.add({
+            targets: healFlash, scaleX: 2.5, scaleY: 2.5, alpha: 0,
+            duration: 200, onComplete: () => healFlash.destroy(),
+          });
+          orb.destroy();
+          orbTrail.destroy();
+        },
+      });
+    });
+  }
+
+  /**
+   * Fear — purple shockwave ring + smoke + "!" over enemies.
+   */
+  onWarlockFear(data) {
+    if (!this.scene) return;
+    const { player, radius } = data;
+    if (!player) return;
+    const cx = player.x;
+    const cy = player.groundY - 8;
+    const r = radius || 60;
+
+    // Purple shockwave ring expanding
+    const ring = this.scene.add.circle(cx, cy, 10, 0x6622aa, 0);
+    ring.setStrokeStyle(3, 0x8844cc, 0.9);
+    ring.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    this.scene.tweens.add({
+      targets: ring,
+      scaleX: r / 10,
+      scaleY: (r / 10) * 0.5,
+      alpha: 0,
+      duration: 450,
+      ease: 'Quad.easeOut',
+      onComplete: () => ring.destroy(),
+    });
+
+    // Second ring, slightly delayed
+    this.scene.time.delayedCall(80, () => {
+      if (!this.scene) return;
+      const ring2 = this.scene.add.circle(cx, cy, 8, 0x8844cc, 0);
+      ring2.setStrokeStyle(2, 0xaa66ee, 0.7);
+      ring2.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      this.scene.tweens.add({
+        targets: ring2,
+        scaleX: (r / 8) * 0.8,
+        scaleY: (r / 8) * 0.4,
+        alpha: 0,
+        duration: 400,
+        onComplete: () => ring2.destroy(),
+      });
+    });
+
+    // Dark purple smoke puffs in a circle
+    const puffCount = 8;
+    for (let i = 0; i < puffCount; i++) {
+      const angle = (i / puffCount) * Math.PI * 2;
+      const px = cx + Math.cos(angle) * (r * 0.5);
+      const py = cy + Math.sin(angle) * (r * 0.25);
+      this.scene.time.delayedCall(i * 30, () => {
+        if (!this.scene) return;
+        const puff = this.scene.add.circle(px, py, 4, 0x6622aa, 0.6);
+        puff.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        this.scene.tweens.add({
+          targets: puff,
+          scaleX: 3, scaleY: 3, alpha: 0, y: py - 12,
+          duration: 500,
+          onComplete: () => puff.destroy(),
+        });
+      });
+    }
+
+    // Purple mist rising from ground
+    const mist = this.scene.add.particles(cx, cy + 4, 'vfx_circle', {
+      speed: { min: 5, max: 15 },
+      angle: { min: 250, max: 290 },
+      lifespan: 600,
+      tint: [0x6622aa, 0x8844cc, 0x442266],
+      alpha: { start: 0.5, end: 0 },
+      scale: { start: 0.8, end: 2 },
+      emitting: false,
+    });
+    mist.setDepth(GAME_CONFIG.layers.foregroundDecor - 1);
+    mist.explode(12);
+    this.scene.time.delayedCall(650, () => mist.destroy());
+
+    // Floating "!" over affected enemies
+    const enemies = this.scene.getAliveEnemies ? this.scene.getAliveEnemies() : [];
+    for (const enemy of enemies) {
+      if (!enemy || enemy.dead) continue;
+      const dx = enemy.x - cx;
+      const dy = (enemy.groundY || enemy.y) - cy;
+      if (dx * dx + dy * dy < r * r) {
+        const exclaim = this.scene.add.text(enemy.x, (enemy.groundY || enemy.y) - 30, '!', {
+          fontSize: '14px',
+          fontFamily: 'monospace',
+          color: '#8844cc',
+          fontStyle: 'bold',
+          stroke: '#220044',
+          strokeThickness: 2,
+        }).setOrigin(0.5);
+        exclaim.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+        this.scene.tweens.add({
+          targets: exclaim,
+          y: exclaim.y - 16,
+          alpha: 0,
+          duration: 800,
+          ease: 'Quad.easeOut',
+          onComplete: () => exclaim.destroy(),
+        });
+      }
+    }
+  }
+
+  /**
+   * Rain of Fire tick — falling fire meteors with splash and burn.
+   */
+  onWarlockRainTick(data) {
+    if (!this.scene) return;
+    const { x, y, radius } = data;
+    const r = radius || 40;
+
+    // Random offset within radius
+    const ox = x + (Math.random() - 0.5) * r;
+    const gy = y;
+
+    // Falling meteor
+    const meteor = this.scene.add.graphics();
+    meteor.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+    meteor.fillStyle(0xff6600, 1);
+    meteor.fillCircle(0, 0, 4);
+    meteor.fillStyle(0xffaa00, 0.7);
+    meteor.fillCircle(0, 0, 6);
+    meteor.fillStyle(0xff4400, 0.3);
+    meteor.fillCircle(0, 0, 9);
+    meteor.setPosition(ox, gy - 80);
+
+    // Meteor trail
+    const meteorTrail = this.scene.add.particles(ox, gy - 80, 'vfx_pixel_4', {
+      speed: { min: 5, max: 15 },
+      angle: { min: 250, max: 290 },
+      lifespan: 200,
+      tint: [0xff6600, 0xff4400, 0xffaa00],
+      alpha: { start: 0.8, end: 0 },
+      scale: { start: 1, end: 0.3 },
+      frequency: 15,
+      follow: meteor,
+    });
+    meteorTrail.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+
+    this.scene.tweens.add({
+      targets: meteor,
+      y: gy,
+      duration: 250,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        meteor.destroy();
+        meteorTrail.destroy();
+
+        // Impact splash — orange/yellow sparks
+        const splash = this.scene.add.particles(ox, gy, 'vfx_pixel_4', {
+          speed: { min: 30, max: 70 },
+          angle: { min: 200, max: 340 },
+          lifespan: 300,
+          tint: [0xff6600, 0xffaa00, 0xffdd44],
+          alpha: { start: 1, end: 0 },
+          gravityY: 100,
+          emitting: false,
+        });
+        splash.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+        splash.explode(10);
+        this.scene.time.delayedCall(350, () => splash.destroy());
+
+        // Impact flash
+        const flash = this.scene.add.circle(ox, gy, 5, 0xffaa00, 0.9);
+        flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+        this.scene.tweens.add({
+          targets: flash, scaleX: 3, scaleY: 2, alpha: 0,
+          duration: 200, onComplete: () => flash.destroy(),
+        });
+
+        // Burning ground glow (persistent, low alpha)
+        const burn = this.scene.add.circle(ox, gy, r * 0.4, 0xff6600, 0.15);
+        burn.setDepth(GAME_CONFIG.layers.foregroundDecor - 1);
+        this.scene.tweens.add({
+          targets: burn,
+          alpha: 0,
+          duration: 1200,
+          onComplete: () => burn.destroy(),
+        });
+
+        // Smoke particles rising
+        const smoke = this.scene.add.particles(ox, gy, 'vfx_circle', {
+          speed: { min: 5, max: 12 },
+          angle: { min: 250, max: 290 },
+          lifespan: 500,
+          tint: [0x553311, 0x442200],
+          alpha: { start: 0.4, end: 0 },
+          scale: { start: 0.6, end: 1.5 },
+          emitting: false,
+        });
+        smoke.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        smoke.explode(4);
+        this.scene.time.delayedCall(550, () => smoke.destroy());
+      },
+    });
+  }
+
+  /**
+   * Imp Spawn — green summoning circle + fel fire column.
+   */
+  onWarlockImpSpawn(data) {
+    if (!this.scene) return;
+    const { x, y } = data;
+
+    // Green summoning circle expanding
+    const circle = this.scene.add.circle(x, y, 4, 0x88ff44, 0);
+    circle.setStrokeStyle(2, 0x88ff44, 0.9);
+    circle.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    this.scene.tweens.add({
+      targets: circle,
+      scaleX: 4, scaleY: 2, alpha: 0,
+      duration: 600,
+      ease: 'Quad.easeOut',
+      onComplete: () => circle.destroy(),
+    });
+
+    // Inner circle glow
+    const inner = this.scene.add.circle(x, y, 3, 0x44cc22, 0.3);
+    inner.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    this.scene.tweens.add({
+      targets: inner,
+      scaleX: 3, scaleY: 1.5, alpha: 0,
+      duration: 500, delay: 50,
+      onComplete: () => inner.destroy(),
+    });
+
+    // Fel fire column rising from circle
+    for (let i = 0; i < 6; i++) {
+      this.scene.time.delayedCall(i * 40, () => {
+        if (!this.scene) return;
+        const flame = this.scene.add.circle(
+          x + (Math.random() - 0.5) * 8,
+          y,
+          2 + Math.random() * 2,
+          [0x88ff44, 0x44cc22, 0xccffaa][Math.floor(Math.random() * 3)],
+          0.8
+        );
+        flame.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+        this.scene.tweens.add({
+          targets: flame,
+          y: y - 24 - Math.random() * 16,
+          scaleX: 0.3, scaleY: 0.3, alpha: 0,
+          duration: 350,
+          onComplete: () => flame.destroy(),
+        });
+      });
+    }
+
+    // Green sparkle burst
+    const sparkle = this.scene.add.particles(x, y, 'vfx_pixel_4', {
+      speed: { min: 15, max: 40 },
+      angle: { min: 0, max: 360 },
+      lifespan: 300,
+      tint: [0x88ff44, 0xccffaa, 0x44cc22],
+      alpha: { start: 1, end: 0 },
+      emitting: false,
+    });
+    sparkle.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    sparkle.explode(8);
+    this.scene.time.delayedCall(350, () => sparkle.destroy());
+
+    // Green smoke puff
+    const smoke = this.scene.add.particles(x, y, 'vfx_circle', {
+      speed: { min: 5, max: 15 },
+      angle: { min: 240, max: 300 },
+      lifespan: 400,
+      tint: [0x448833, 0x336622],
+      alpha: { start: 0.5, end: 0 },
+      scale: { start: 0.8, end: 2 },
+      emitting: false,
+    });
+    smoke.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    smoke.explode(5);
+    this.scene.time.delayedCall(450, () => smoke.destroy());
+  }
+
+  /**
+   * Imp Attack — small green fireball from imp to target.
+   */
+  onWarlockImpAttack(data) {
+    if (!this.scene) return;
+    const { source, target, damage } = data;
+    if (!source || !target) return;
+
+    const sx = source.x;
+    const sy = source.y;
+    const tx = target.x;
+    const ty = target.groundY ? target.groundY - 12 : target.y;
+
+    // Small green fireball
+    const bolt = this.scene.add.graphics();
+    bolt.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    bolt.fillStyle(0x88ff44, 0.9);
+    bolt.fillCircle(0, 0, 3);
+    bolt.fillStyle(0xffffff, 0.7);
+    bolt.fillCircle(0, 0, 1.2);
+    bolt.setPosition(sx, sy);
+
+    // Trail particles
+    const trail = this.scene.add.particles(sx, sy, 'vfx_pixel_4', {
+      speed: { min: 3, max: 10 },
+      lifespan: 150,
+      tint: [0x88ff44, 0x44cc22],
+      alpha: { start: 0.7, end: 0 },
+      scale: { start: 0.5, end: 0 },
+      frequency: 20,
+      follow: bolt,
+    });
+    trail.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+    this.scene.tweens.add({
+      targets: bolt,
+      x: tx, y: ty,
+      duration: 250,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        // Small green impact flash
+        const flash = this.scene.add.circle(tx, ty, 3, 0x88ff44, 0.9);
+        flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+        this.scene.tweens.add({
+          targets: flash, scaleX: 2.5, scaleY: 2.5, alpha: 0,
+          duration: 150, onComplete: () => flash.destroy(),
+        });
+        bolt.destroy();
+        trail.destroy();
+      },
+    });
+  }
+
+  /**
+   * Shadowfury — massive purple explosion with lightning arcs.
+   */
+  onWarlockShadowfury(data) {
+    if (!this.scene) return;
+    const { player, radius } = data;
+    if (!player) return;
+    const cx = player.x;
+    const cy = player.groundY - 8;
+    const r = radius || 50;
+
+    // Brief screen dim
+    const overlay = this.scene.add.rectangle(
+      this.scene.cameras.main.scrollX + this.scene.cameras.main.width / 2,
+      this.scene.cameras.main.scrollY + this.scene.cameras.main.height / 2,
+      this.scene.cameras.main.width,
+      this.scene.cameras.main.height,
+      0x220044, 0.3
+    );
+    overlay.setDepth(GAME_CONFIG.layers.foregroundDecor + 5);
+    overlay.setScrollFactor(0);
+    this.scene.tweens.add({
+      targets: overlay, alpha: 0,
+      duration: 300, onComplete: () => overlay.destroy(),
+    });
+
+    // 3 concentric purple rings
+    const ringColors = [0x6622aa, 0x8844cc, 0xaa66ee];
+    const ringDelays = [0, 40, 80];
+    for (let i = 0; i < 3; i++) {
+      this.scene.time.delayedCall(ringDelays[i], () => {
+        if (!this.scene) return;
+        const ring = this.scene.add.circle(cx, cy, 8, ringColors[i], 0);
+        ring.setStrokeStyle(3 - i * 0.5, ringColors[i], 0.9 - i * 0.1);
+        ring.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+        this.scene.tweens.add({
+          targets: ring,
+          scaleX: (r / 8) * (1 - i * 0.15),
+          scaleY: (r / 8) * (1 - i * 0.15) * 0.5,
+          alpha: 0,
+          duration: 400 + i * 60,
+          ease: 'Quad.easeOut',
+          onComplete: () => ring.destroy(),
+        });
+      });
+    }
+
+    // Purple lightning arcs radiating outward (8 bolts)
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const arc = this.scene.add.graphics();
+      arc.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+      arc.lineStyle(1.5, 0xaa66ee, 0.9);
+      arc.beginPath();
+      arc.moveTo(cx, cy);
+      // Jagged bolt — 3 segments
+      let px = cx, py = cy;
+      for (let seg = 1; seg <= 3; seg++) {
+        const t = seg / 3;
+        const bx = cx + Math.cos(angle) * r * t + (Math.random() - 0.5) * 8;
+        const by = cy + Math.sin(angle) * r * 0.5 * t + (Math.random() - 0.5) * 6;
+        arc.lineTo(bx, by);
+        px = bx;
+        py = by;
+      }
+      arc.strokePath();
+      this.scene.tweens.add({
+        targets: arc, alpha: 0,
+        duration: 250 + Math.random() * 100,
+        onComplete: () => arc.destroy(),
+      });
+    }
+
+    // Purple particle debris burst
+    const debris = this.scene.add.particles(cx, cy, 'vfx_pixel_4', {
+      speed: { min: 30, max: 80 },
+      angle: { min: 0, max: 360 },
+      lifespan: 400,
+      tint: [0x6622aa, 0x8844cc, 0xaa66ee],
+      alpha: { start: 1, end: 0 },
+      gravityY: 60,
+      emitting: false,
+    });
+    debris.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    debris.explode(18);
+    this.scene.time.delayedCall(450, () => debris.destroy());
+
+    // Ground crack lines in purple
+    for (let i = 0; i < 6; i++) {
+      const angle = (i / 6) * Math.PI * 2;
+      const crack = this.scene.add.graphics();
+      crack.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      crack.lineStyle(1, 0x6622aa, 0.7);
+      crack.beginPath();
+      crack.moveTo(cx, cy + 4);
+      const endCx = cx + Math.cos(angle) * (r * 0.6 + Math.random() * 10);
+      const endCy = cy + 4 + Math.sin(angle) * (r * 0.3);
+      crack.lineTo(
+        cx + Math.cos(angle) * r * 0.3 + (Math.random() - 0.5) * 4,
+        cy + 4 + Math.sin(angle) * r * 0.15
+      );
+      crack.lineTo(endCx, endCy);
+      crack.strokePath();
+      this.scene.tweens.add({
+        targets: crack, alpha: 0,
+        duration: 600, delay: 100,
+        onComplete: () => crack.destroy(),
+      });
+    }
+
+    // Central flash
+    const flash = this.scene.add.circle(cx, cy, 6, 0xffffff, 0.8);
+    flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 4);
+    this.scene.tweens.add({
+      targets: flash, scaleX: 3, scaleY: 3, alpha: 0,
+      duration: 150, onComplete: () => flash.destroy(),
+    });
+
+    this.scene.cameras.main.shake(150, 0.008);
+  }
+
+  /**
+   * Immolate — fire ignite on enemy with circling flames.
+   */
+  onWarlockImmolate(data) {
+    if (!this.scene) return;
+    const { enemy } = data;
+    if (!enemy) return;
+    const ex = enemy.x;
+    const ey = enemy.groundY ? enemy.groundY - 12 : enemy.y;
+
+    // Rising fire particles
+    const fire = this.scene.add.particles(ex, ey, 'vfx_pixel_4', {
+      speed: { min: 10, max: 25 },
+      angle: { min: 250, max: 290 },
+      lifespan: 400,
+      tint: [0xff6600, 0xffaa00, 0xff4400],
+      alpha: { start: 0.9, end: 0 },
+      scale: { start: 1, end: 0.3 },
+      emitting: false,
+    });
+    fire.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    fire.explode(8);
+    this.scene.time.delayedCall(450, () => fire.destroy());
+
+    // Ignite flash
+    const flash = this.scene.add.circle(ex, ey, 4, 0xff6600, 0.7);
+    flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    this.scene.tweens.add({
+      targets: flash, scaleX: 2.5, scaleY: 2.5, alpha: 0,
+      duration: 200, onComplete: () => flash.destroy(),
+    });
+
+    // Enemy tinted orange briefly
+    if (enemy.sprite) {
+      enemy.sprite.setTint(0xff8844);
+      this.scene.time.delayedCall(400, () => {
+        if (enemy.sprite && !enemy.dead) enemy.sprite.clearTint();
+      });
+    }
+
+    // Small flame particles circling the enemy
+    for (let i = 0; i < 5; i++) {
+      const angle = (i / 5) * Math.PI * 2;
+      const flame = this.scene.add.circle(
+        ex + Math.cos(angle) * 10,
+        ey + Math.sin(angle) * 5,
+        1.5,
+        [0xff6600, 0xffaa00, 0xff4400][i % 3],
+        0.8
+      );
+      flame.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+      // Orbit once then fade
+      this.scene.tweens.add({
+        targets: flame,
+        x: ex + Math.cos(angle + Math.PI * 2) * 10,
+        y: ey + Math.sin(angle + Math.PI * 2) * 5 - 8,
+        alpha: 0,
+        duration: 600,
+        onComplete: () => flame.destroy(),
+      });
+    }
+  }
+
+  /**
+   * Immolate Burst — massive explosion on all burning enemies with fire chains.
+   */
+  onWarlockImmolateBurst(data) {
+    if (!this.scene) return;
+    const { enemies } = data;
+    if (!enemies || enemies.length === 0) return;
+
+    const positions = [];
+
+    // Explosion on each enemy
+    for (const enemy of enemies) {
+      if (!enemy || enemy.dead) continue;
+      const ex = enemy.x;
+      const ey = enemy.groundY ? enemy.groundY - 12 : enemy.y;
+      positions.push({ x: ex, y: ey });
+
+      // Massive orange explosion
+      const blast = this.scene.add.circle(ex, ey, 6, 0xff6600, 0.9);
+      blast.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+      this.scene.tweens.add({
+        targets: blast, scaleX: 4, scaleY: 4, alpha: 0,
+        duration: 300, onComplete: () => blast.destroy(),
+      });
+
+      // Inner white-orange flash
+      const core = this.scene.add.circle(ex, ey, 4, 0xffdd44, 1);
+      core.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+      this.scene.tweens.add({
+        targets: core, scaleX: 2, scaleY: 2, alpha: 0,
+        duration: 150, onComplete: () => core.destroy(),
+      });
+
+      // Orange shockwave ring
+      const ring = this.scene.add.circle(ex, ey, 8, 0xff6600, 0);
+      ring.setStrokeStyle(2, 0xff6600, 0.8);
+      ring.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      this.scene.tweens.add({
+        targets: ring, scaleX: 3.5, scaleY: 2, alpha: 0,
+        duration: 350, onComplete: () => ring.destroy(),
+      });
+
+      // Fire debris
+      const debris = this.scene.add.particles(ex, ey, 'vfx_pixel_4', {
+        speed: { min: 40, max: 80 },
+        angle: { min: 0, max: 360 },
+        lifespan: 350,
+        tint: [0xff6600, 0xffaa00, 0xff4400],
+        alpha: { start: 1, end: 0 },
+        gravityY: 80,
+        emitting: false,
+      });
+      debris.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      debris.explode(12);
+      this.scene.time.delayedCall(400, () => debris.destroy());
+    }
+
+    // Fire chains connecting all burning enemies briefly
+    if (positions.length >= 2) {
+      for (let i = 0; i < positions.length - 1; i++) {
+        const p1 = positions[i];
+        const p2 = positions[i + 1];
+        const chain = this.scene.add.graphics();
+        chain.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+        // Outer glow chain
+        chain.lineStyle(3, 0xff6600, 0.5);
+        chain.beginPath();
+        chain.moveTo(p1.x, p1.y);
+        // Slight arc through midpoint
+        const mx = (p1.x + p2.x) / 2;
+        const my = (p1.y + p2.y) / 2 - 8;
+        chain.lineTo(mx, my);
+        chain.lineTo(p2.x, p2.y);
+        chain.strokePath();
+        // Inner bright chain
+        chain.lineStyle(1, 0xffdd44, 0.8);
+        chain.beginPath();
+        chain.moveTo(p1.x, p1.y);
+        chain.lineTo(mx, my);
+        chain.lineTo(p2.x, p2.y);
+        chain.strokePath();
+
+        this.scene.tweens.add({
+          targets: chain, alpha: 0,
+          duration: 400,
+          onComplete: () => chain.destroy(),
+        });
+      }
+    }
+
+    this.scene.cameras.main.shake(180, 0.01);
+  }
+
+  // ─── HUNTER ABILITY VFX ──────────────────────────────────────
+
+  /**
+   * Disengage — dust cloud at launch, speed lines, landing puff.
+   */
+  onHunterDisengage(data) {
+    if (!this.scene) return;
+    const { player, fromX, fromY } = data;
+    if (!player) return;
+    const fx = fromX || player.x;
+    const fy = fromY || player.groundY;
+
+    // Dust cloud at launch point
+    const launchDust = this.scene.add.particles(fx, fy, 'vfx_circle', {
+      speed: { min: 15, max: 40 },
+      angle: { min: 180, max: 360 },
+      lifespan: 350,
+      tint: [0xaa9977, 0x886644, 0xccbbaa],
+      alpha: { start: 0.7, end: 0 },
+      scale: { start: 0.8, end: 1.5 },
+      emitting: false,
+    });
+    launchDust.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    launchDust.explode(10);
+    this.scene.time.delayedCall(400, () => launchDust.destroy());
+
+    // Brief afterimage at origin
+    const ghost = this.scene.add.circle(fx, fy - 12, 6, 0x44bbaa, 0.4);
+    ghost.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    this.scene.tweens.add({
+      targets: ghost, alpha: 0, scaleX: 1.5, scaleY: 1.5,
+      duration: 300, onComplete: () => ghost.destroy(),
+    });
+
+    // Speed lines behind hunter during leap
+    const dir = player.facingRight ? -1 : 1; // lines go opposite of movement
+    for (let i = 0; i < 6; i++) {
+      this.scene.time.delayedCall(i * 30, () => {
+        if (!this.scene || !player) return;
+        const line = this.scene.add.graphics();
+        line.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        const ly = (player.groundY || fy) - 8 + (Math.random() - 0.5) * 16;
+        const lx = player.x + dir * 4;
+        line.lineStyle(1, 0x44bbaa, 0.6);
+        line.beginPath();
+        line.moveTo(lx, ly);
+        line.lineTo(lx + dir * (12 + Math.random() * 10), ly);
+        line.strokePath();
+        this.scene.tweens.add({
+          targets: line, alpha: 0,
+          duration: 200, onComplete: () => line.destroy(),
+        });
+      });
+    }
+
+    // Landing dust puff (delayed to match landing)
+    this.scene.time.delayedCall(250, () => {
+      if (!this.scene || !player) return;
+      const lx = player.x;
+      const ly = player.groundY || fy;
+      const landDust = this.scene.add.particles(lx, ly, 'vfx_circle', {
+        speed: { min: 10, max: 30 },
+        angle: { min: 200, max: 340 },
+        lifespan: 300,
+        tint: [0xaa9977, 0x886644],
+        alpha: { start: 0.6, end: 0 },
+        scale: { start: 0.6, end: 1.2 },
+        emitting: false,
+      });
+      landDust.setDepth(GAME_CONFIG.layers.foregroundDecor);
+      landDust.explode(8);
+      this.scene.time.delayedCall(350, () => landDust.destroy());
+    });
+  }
+
+  /**
+   * Trap Place — ice blue circle on ground with pulsing glow.
+   */
+  onHunterTrapPlace(data) {
+    if (!this.scene) return;
+    const { x, y } = data;
+
+    // Ice blue circle on ground (persistent)
+    const trap = this.scene.add.circle(x, y, 8, 0x88ccff, 0.15);
+    trap.setStrokeStyle(1.5, 0x88ccff, 0.6);
+    trap.setDepth(GAME_CONFIG.layers.foregroundDecor - 1);
+    trap.setScale(1, 0.5);
+
+    // Pulsing glow
+    this.scene.tweens.add({
+      targets: trap,
+      alpha: 0.35,
+      duration: 600,
+      yoyo: true,
+      repeat: 8,
+      onComplete: () => trap.destroy(),
+    });
+
+    // Crystalline particles around trap
+    const crystals = this.scene.add.particles(x, y, 'vfx_pixel_4', {
+      speed: { min: 3, max: 8 },
+      angle: { min: 250, max: 290 },
+      lifespan: 800,
+      tint: [0x88ccff, 0xaaddff, 0x66aadd],
+      alpha: { start: 0.5, end: 0 },
+      scale: { start: 0.4, end: 0 },
+      frequency: 200,
+      quantity: 1,
+    });
+    crystals.setDepth(GAME_CONFIG.layers.foregroundDecor - 1);
+    this.scene.time.delayedCall(10000, () => crystals.destroy());
+
+    // Placement sparkle
+    const sparkle = this.scene.add.particles(x, y, 'vfx_pixel_4', {
+      speed: { min: 10, max: 25 },
+      angle: { min: 0, max: 360 },
+      lifespan: 250,
+      tint: [0x88ccff, 0xffffff],
+      alpha: { start: 0.8, end: 0 },
+      emitting: false,
+    });
+    sparkle.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    sparkle.explode(6);
+    this.scene.time.delayedCall(300, () => sparkle.destroy());
+  }
+
+  /**
+   * Trap Trigger — ice explosion burst with frost crystals.
+   */
+  onHunterTrapTrigger(data) {
+    if (!this.scene) return;
+    const { x, y, target } = data;
+
+    // Ice explosion burst — blue/white
+    const flash = this.scene.add.circle(x, y, 5, 0xffffff, 1);
+    flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+    this.scene.tweens.add({
+      targets: flash, scaleX: 4, scaleY: 4, alpha: 0,
+      duration: 200, onComplete: () => flash.destroy(),
+    });
+
+    // Blue explosion ring
+    const ring = this.scene.add.circle(x, y, 8, 0x88ccff, 0);
+    ring.setStrokeStyle(3, 0x88ccff, 0.9);
+    ring.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+    this.scene.tweens.add({
+      targets: ring, scaleX: 3.5, scaleY: 2, alpha: 0,
+      duration: 350, onComplete: () => ring.destroy(),
+    });
+
+    // Frost crystals radiating outward
+    for (let i = 0; i < 8; i++) {
+      const angle = (i / 8) * Math.PI * 2;
+      const crystal = this.scene.add.graphics();
+      crystal.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+      crystal.fillStyle(0x88ccff, 0.9);
+      // Diamond shape
+      crystal.fillTriangle(0, -3, 2, 0, 0, 3);
+      crystal.fillTriangle(0, -3, -2, 0, 0, 3);
+      crystal.setPosition(x, y);
+
+      const endX = x + Math.cos(angle) * 25;
+      const endY = y + Math.sin(angle) * 15;
+      this.scene.tweens.add({
+        targets: crystal,
+        x: endX, y: endY, alpha: 0, scaleX: 0.3, scaleY: 0.3,
+        duration: 350,
+        onComplete: () => crystal.destroy(),
+      });
+    }
+
+    // Frozen vapor cloud
+    const vapor = this.scene.add.particles(x, y, 'vfx_circle', {
+      speed: { min: 8, max: 25 },
+      angle: { min: 0, max: 360 },
+      lifespan: 500,
+      tint: [0x88ccff, 0xaaddff, 0xffffff],
+      alpha: { start: 0.6, end: 0 },
+      scale: { start: 0.6, end: 2 },
+      emitting: false,
+    });
+    vapor.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    vapor.explode(12);
+    this.scene.time.delayedCall(550, () => vapor.destroy());
+
+    // Target tinted blue
+    if (target && target.sprite) {
+      target.sprite.setTint(0x88ccff);
+      this.scene.time.delayedCall(500, () => {
+        if (target.sprite && !target.dead) target.sprite.clearTint();
+      });
+    }
+
+    this.scene.cameras.main.shake(80, 0.004);
+  }
+
+  /**
+   * Rapid Fire tick — thin teal arrow line, fast 100ms.
+   */
+  onHunterRapidFireTick(data) {
+    if (!this.scene) return;
+    const { source, target } = data;
+    if (!source || !target) return;
+
+    const sx = source.x;
+    const sy = source.groundY ? source.groundY - 14 : source.y;
+    const tx = target.x;
+    const ty = target.groundY ? target.groundY - 12 : target.y;
+
+    // Muzzle flash at source
+    const muzzle = this.scene.add.circle(sx, sy, 2, 0x44bbaa, 0.8);
+    muzzle.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    this.scene.tweens.add({
+      targets: muzzle, scaleX: 2, scaleY: 2, alpha: 0,
+      duration: 80, onComplete: () => muzzle.destroy(),
+    });
+
+    // Thin teal arrow line
+    const line = this.scene.add.graphics();
+    line.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    line.lineStyle(1.5, 0x44bbaa, 0.9);
+    line.beginPath();
+    line.moveTo(sx, sy);
+    line.lineTo(tx, ty);
+    line.strokePath();
+    // Inner bright core line
+    line.lineStyle(0.5, 0xffffff, 0.6);
+    line.beginPath();
+    line.moveTo(sx, sy);
+    line.lineTo(tx, ty);
+    line.strokePath();
+
+    this.scene.tweens.add({
+      targets: line, alpha: 0,
+      duration: 100, onComplete: () => line.destroy(),
+    });
+
+    // Impact spark at target
+    const spark = this.scene.add.circle(tx, ty, 2, 0x44bbaa, 0.9);
+    spark.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    this.scene.tweens.add({
+      targets: spark, scaleX: 2, scaleY: 2, alpha: 0,
+      duration: 120, onComplete: () => spark.destroy(),
+    });
+  }
+
+  /**
+   * Pet Spawn — earthy brown summoning circle with dust and paw prints.
+   */
+  onHunterPetSpawn(data) {
+    if (!this.scene) return;
+    const { x, y } = data;
+
+    // Earthy brown summoning circle
+    const circle = this.scene.add.circle(x, y, 6, 0x886644, 0);
+    circle.setStrokeStyle(2, 0x886644, 0.8);
+    circle.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    circle.setScale(0.5, 0.25);
+    this.scene.tweens.add({
+      targets: circle,
+      scaleX: 3, scaleY: 1.5, alpha: 0,
+      duration: 500,
+      onComplete: () => circle.destroy(),
+    });
+
+    // Dust puff burst
+    const dust = this.scene.add.particles(x, y, 'vfx_circle', {
+      speed: { min: 15, max: 35 },
+      angle: { min: 200, max: 340 },
+      lifespan: 350,
+      tint: [0x886644, 0xaa8866, 0x664422],
+      alpha: { start: 0.7, end: 0 },
+      scale: { start: 0.6, end: 1.2 },
+      emitting: false,
+    });
+    dust.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    dust.explode(8);
+    this.scene.time.delayedCall(400, () => dust.destroy());
+
+    // Paw print particle effect — small dots in paw pattern
+    const pawOffsets = [
+      { dx: -4, dy: -4 }, { dx: 4, dy: -4 },
+      { dx: -3, dy: 2 }, { dx: 3, dy: 2 },
+      { dx: 0, dy: 5 },
+    ];
+    for (const off of pawOffsets) {
+      const paw = this.scene.add.circle(x + off.dx, y + off.dy, 1.5, 0x886644, 0.7);
+      paw.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      this.scene.tweens.add({
+        targets: paw, alpha: 0, y: paw.y - 6,
+        duration: 600, delay: 100,
+        onComplete: () => paw.destroy(),
+      });
+    }
+
+    // Spawn flash
+    const flash = this.scene.add.circle(x, y - 6, 4, 0xaa8866, 0.6);
+    flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    this.scene.tweens.add({
+      targets: flash, scaleX: 2, scaleY: 2, alpha: 0,
+      duration: 200, onComplete: () => flash.destroy(),
+    });
+  }
+
+  /**
+   * Pet Attack — quick slash lines at target with dust.
+   */
+  onHunterPetAttack(data) {
+    if (!this.scene) return;
+    const { source, target } = data;
+    if (!source || !target) return;
+
+    const tx = target.x;
+    const ty = target.groundY ? target.groundY - 12 : target.y;
+
+    // 3-4 claw mark lines
+    const clawCount = 3 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < clawCount; i++) {
+      const claw = this.scene.add.graphics();
+      claw.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+      const color = i % 2 === 0 ? 0x44bbaa : 0x886644;
+      claw.lineStyle(1.5, color, 0.9);
+      claw.beginPath();
+      const startX = tx - 6 + i * 4;
+      const startY = ty - 6;
+      claw.moveTo(startX, startY);
+      claw.lineTo(startX + 2, startY + 12);
+      claw.strokePath();
+
+      this.scene.tweens.add({
+        targets: claw, alpha: 0,
+        duration: 200 + i * 30,
+        onComplete: () => claw.destroy(),
+      });
+    }
+
+    // Dust puff at impact
+    const dust = this.scene.add.particles(tx, ty, 'vfx_pixel_4', {
+      speed: { min: 10, max: 25 },
+      angle: { min: 0, max: 360 },
+      lifespan: 200,
+      tint: [0x886644, 0xaa9977],
+      alpha: { start: 0.6, end: 0 },
+      emitting: false,
+    });
+    dust.setDepth(GAME_CONFIG.layers.foregroundDecor);
+    dust.explode(4);
+    this.scene.time.delayedCall(250, () => dust.destroy());
+
+    // Quick slash flash
+    const flash = this.scene.add.circle(tx, ty, 3, 0x44bbaa, 0.7);
+    flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    this.scene.tweens.add({
+      targets: flash, scaleX: 2, scaleY: 2, alpha: 0,
+      duration: 120, onComplete: () => flash.destroy(),
+    });
+  }
+
+  /**
+   * Volley Arrow — single arrow falling from sky with impact ring.
+   */
+  onHunterVolleyArrow(data) {
+    if (!this.scene) return;
+    const { x, y, index } = data;
+    const idx = index || 0;
+
+    // Arrow falling from sky — thin line
+    const arrow = this.scene.add.graphics();
+    arrow.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+    arrow.lineStyle(1.5, 0x44bbaa, 0.9);
+    arrow.beginPath();
+    arrow.moveTo(0, -8);
+    arrow.lineTo(0, 4);
+    arrow.strokePath();
+    arrow.fillStyle(0x44bbaa, 1);
+    arrow.fillTriangle(0, 4, -2, 0, 2, 0);
+    const startX = x + (Math.random() - 0.5) * 6;
+    arrow.setPosition(startX, y - 60);
+
+    this.scene.tweens.add({
+      targets: arrow,
+      y: y,
+      duration: 180 + idx * 20,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        arrow.destroy();
+
+        // Impact ring on ground
+        const ring = this.scene.add.circle(startX, y, 4, 0x44bbaa, 0);
+        ring.setStrokeStyle(1.5, 0x44bbaa, 0.7);
+        ring.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        ring.setScale(1, 0.5);
+        this.scene.tweens.add({
+          targets: ring, scaleX: 2.5, scaleY: 1.2, alpha: 0,
+          duration: 250, onComplete: () => ring.destroy(),
+        });
+
+        // Dust puff
+        const dust = this.scene.add.particles(startX, y, 'vfx_pixel_4', {
+          speed: { min: 8, max: 20 },
+          angle: { min: 220, max: 320 },
+          lifespan: 200,
+          tint: [0xaa9977, 0x886644],
+          alpha: { start: 0.5, end: 0 },
+          emitting: false,
+        });
+        dust.setDepth(GAME_CONFIG.layers.foregroundDecor);
+        dust.explode(4);
+        this.scene.time.delayedCall(250, () => dust.destroy());
+      },
+    });
+  }
+
+  /**
+   * Kill Shot — massive arrow with trail; huge red explosion if execute.
+   */
+  onHunterKillShot(data) {
+    if (!this.scene) return;
+    const { source, target, isExecute } = data;
+    if (!source || !target) return;
+
+    const sx = source.x;
+    const sy = source.groundY ? source.groundY - 14 : source.y;
+    const tx = target.x;
+    const ty = target.groundY ? target.groundY - 12 : target.y;
+
+    // Arrow head — large, colored based on execute
+    const arrowColor = isExecute ? 0xff4422 : 0xffdd44;
+    const trailColor = isExecute ? 0xff6600 : 0x44bbaa;
+
+    const arrow = this.scene.add.graphics();
+    arrow.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+    arrow.fillStyle(arrowColor, 1);
+    const dir = tx > sx ? 1 : -1;
+    arrow.fillTriangle(dir * 8, 0, -dir * 3, -4, -dir * 3, 4);
+    arrow.fillStyle(0xffffff, 0.8);
+    arrow.fillCircle(0, 0, 2);
+    arrow.setPosition(sx, sy);
+
+    // Long trail of particles
+    const trail = this.scene.add.particles(sx, sy, 'vfx_circle', {
+      speed: { min: 5, max: 20 },
+      angle: dir > 0 ? { min: 150, max: 210 } : { min: -30, max: 30 },
+      lifespan: 400,
+      tint: [arrowColor, trailColor, 0xffffff],
+      alpha: { start: 0.9, end: 0 },
+      scale: { start: 1, end: 0.2 },
+      frequency: 8,
+      follow: arrow,
+    });
+    trail.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+
+    // Extra sparkle trail
+    const sparkTrail = this.scene.add.particles(sx, sy, 'vfx_pixel_4', {
+      speed: { min: 3, max: 12 },
+      angle: { min: 0, max: 360 },
+      lifespan: 250,
+      tint: 0xffffff,
+      alpha: { start: 0.6, end: 0 },
+      scale: { start: 0.4, end: 0 },
+      frequency: 12,
+      follow: arrow,
+    });
+    sparkTrail.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+
+    this.scene.tweens.add({
+      targets: arrow,
+      x: tx, y: ty,
+      duration: 220,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        arrow.destroy();
+        trail.destroy();
+        sparkTrail.destroy();
+
+        if (isExecute) {
+          // HUGE red impact explosion
+          const flash = this.scene.add.circle(tx, ty, 8, 0xffffff, 1);
+          flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 5);
+          this.scene.tweens.add({
+            targets: flash, scaleX: 5, scaleY: 5, alpha: 0,
+            duration: 200, onComplete: () => flash.destroy(),
+          });
+
+          // Red explosion ring
+          const ring = this.scene.add.circle(tx, ty, 10, 0xff4422, 0);
+          ring.setStrokeStyle(4, 0xff4422, 1);
+          ring.setDepth(GAME_CONFIG.layers.foregroundDecor + 4);
+          this.scene.tweens.add({
+            targets: ring, scaleX: 5, scaleY: 5, alpha: 0,
+            duration: 350, onComplete: () => ring.destroy(),
+          });
+
+          // Second ring
+          const ring2 = this.scene.add.circle(tx, ty, 8, 0xff6600, 0);
+          ring2.setStrokeStyle(2, 0xff6600, 0.8);
+          ring2.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+          this.scene.tweens.add({
+            targets: ring2, scaleX: 3.5, scaleY: 3.5, alpha: 0,
+            duration: 300, delay: 40, onComplete: () => ring2.destroy(),
+          });
+
+          // Skull icon flash (text-based)
+          const skull = this.scene.add.text(tx, ty - 16, '\u2620', {
+            fontSize: '18px',
+            color: '#ff4422',
+            stroke: '#000000',
+            strokeThickness: 2,
+          }).setOrigin(0.5);
+          skull.setDepth(GAME_CONFIG.layers.foregroundDecor + 6);
+          this.scene.tweens.add({
+            targets: skull,
+            y: ty - 36, scaleX: 1.5, scaleY: 1.5, alpha: 0,
+            duration: 600, ease: 'Quad.easeOut',
+            onComplete: () => skull.destroy(),
+          });
+
+          // Bonus red particles
+          const redBurst = this.scene.add.particles(tx, ty, 'vfx_pixel_4', {
+            speed: { min: 50, max: 120 },
+            angle: { min: 0, max: 360 },
+            lifespan: 500,
+            tint: [0xff4422, 0xff6600, 0xffaa00, 0xff2200],
+            alpha: { start: 1, end: 0 },
+            gravityY: 80,
+            emitting: false,
+          });
+          redBurst.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+          redBurst.explode(24);
+          this.scene.time.delayedCall(550, () => redBurst.destroy());
+
+          // Heavy screen shake
+          this.scene.cameras.main.shake(200, 0.012);
+        } else {
+          // Normal arrow impact — golden flash
+          const flash = this.scene.add.circle(tx, ty, 4, 0xffdd44, 0.9);
+          flash.setDepth(GAME_CONFIG.layers.foregroundDecor + 3);
+          this.scene.tweens.add({
+            targets: flash, scaleX: 3, scaleY: 3, alpha: 0,
+            duration: 180, onComplete: () => flash.destroy(),
+          });
+
+          // Impact ring
+          const ring = this.scene.add.circle(tx, ty, 6, 0xffdd44, 0);
+          ring.setStrokeStyle(2, 0xffdd44, 0.7);
+          ring.setDepth(GAME_CONFIG.layers.foregroundDecor + 2);
+          this.scene.tweens.add({
+            targets: ring, scaleX: 2.5, scaleY: 2.5, alpha: 0,
+            duration: 250, onComplete: () => ring.destroy(),
+          });
+
+          // Sparks
+          const sparks = this.scene.add.particles(tx, ty, 'vfx_pixel_4', {
+            speed: { min: 25, max: 50 },
+            angle: { min: 0, max: 360 },
+            lifespan: 250,
+            tint: [0xffdd44, 0x44bbaa],
+            alpha: { start: 0.9, end: 0 },
+            gravityY: 50,
+            emitting: false,
+          });
+          sparks.setDepth(GAME_CONFIG.layers.foregroundDecor + 1);
+          sparks.explode(8);
+          this.scene.time.delayedCall(300, () => sparks.destroy());
+
+          this.scene.cameras.main.shake(60, 0.003);
+        }
+      },
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  RAID BOSS ABILITY VFX
   // ═══════════════════════════════════════════════════════════
 
@@ -3729,6 +5430,22 @@ export class VFXSystem {
     this.scene.events.off('priestHolyFirePillar', this.onPriestHolyFirePillar, this);
     this.scene.events.off('priestSpiritLink', this.onPriestSpiritLink, this);
     this.scene.events.off('priestLightningSmite', this.onPriestLightningSmite, this);
+    this.scene.events.off('warlockDrainLife', this.onWarlockDrainLife, this);
+    this.scene.events.off('warlockFear', this.onWarlockFear, this);
+    this.scene.events.off('warlockRainTick', this.onWarlockRainTick, this);
+    this.scene.events.off('warlockImpSpawn', this.onWarlockImpSpawn, this);
+    this.scene.events.off('warlockImpAttack', this.onWarlockImpAttack, this);
+    this.scene.events.off('warlockShadowfury', this.onWarlockShadowfury, this);
+    this.scene.events.off('warlockImmolate', this.onWarlockImmolate, this);
+    this.scene.events.off('warlockImmolateBurst', this.onWarlockImmolateBurst, this);
+    this.scene.events.off('hunterDisengage', this.onHunterDisengage, this);
+    this.scene.events.off('hunterTrapPlace', this.onHunterTrapPlace, this);
+    this.scene.events.off('hunterTrapTrigger', this.onHunterTrapTrigger, this);
+    this.scene.events.off('hunterRapidFireTick', this.onHunterRapidFireTick, this);
+    this.scene.events.off('hunterPetSpawn', this.onHunterPetSpawn, this);
+    this.scene.events.off('hunterPetAttack', this.onHunterPetAttack, this);
+    this.scene.events.off('hunterVolleyArrow', this.onHunterVolleyArrow, this);
+    this.scene.events.off('hunterKillShot', this.onHunterKillShot, this);
     this.scene.events.off('enemyDash', this.onEnemyDash, this);
     this.scene.events.off('enemyDashEnd', this.onEnemyDashEnd, this);
     this.scene.events.off('enemyAfterimage', this.onEnemyAfterimage, this);

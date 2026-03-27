@@ -57,6 +57,8 @@ export class BootScene extends Phaser.Scene {
     this.load.spritesheet('priest', 'assets/sprites/priest_side_right.png', { frameWidth: 48, frameHeight: 48 });
     this.load.spritesheet('rogue', 'assets/sprites/rogue_side_right.png', { frameWidth: 48, frameHeight: 48 });
     this.load.spritesheet('mage', 'assets/sprites/mage_side_right.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('warlock', 'assets/sprites/warlock_side_right.png', { frameWidth: 48, frameHeight: 48 });
+    this.load.spritesheet('hunter', 'assets/sprites/hunter_side_right.png', { frameWidth: 48, frameHeight: 48 });
 
     // =====================================================
     // ENEMY SPRITE SHEETS — 14 columns × 12 rows
@@ -158,6 +160,7 @@ export class BootScene extends Phaser.Scene {
     // Generate UI helper textures
     this.generateUITextures();
     this.generateVFXTextures();
+    this.generatePlaceholderSheets();
     this.createAffixAnimations();
 
     // Define animations
@@ -166,6 +169,63 @@ export class BootScene extends Phaser.Scene {
 
     // Move to main menu
     this.scene.start('MainMenuScene');
+  }
+
+  /**
+   * Generate placeholder sprite sheets for classes that don't have PNGs yet.
+   * Creates a 14×12 grid of colored frames (48×48 each) that the animation system can use.
+   */
+  generatePlaceholderSheets() {
+    // Add new classes here if they don't have sprite sheets yet
+    const placeholders = [
+    ];
+
+    for (const { key, color, accent, label } of placeholders) {
+      // Skip if a real spritesheet was already loaded
+      if (this.textures.exists(key)) continue;
+
+      const cols = 14;
+      const rows = 12;
+      const fw = 48;
+      const fh = 48;
+      const canvas = this.textures.createCanvas(key, cols * fw, rows * fh);
+      const ctx = canvas.getContext();
+
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const x = col * fw;
+          const y = row * fh;
+
+          // Body
+          ctx.fillStyle = color;
+          ctx.fillRect(x + 16, y + 12, 16, 24);
+
+          // Head
+          ctx.fillStyle = accent;
+          ctx.fillRect(x + 18, y + 4, 12, 12);
+
+          // Legs (slight variation per frame for walk illusion)
+          ctx.fillStyle = color;
+          ctx.fillRect(x + 16, y + 36, 7, 10);
+          ctx.fillRect(x + 25, y + 36, 7, 10);
+
+          // Label
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '8px monospace';
+          ctx.fillText(label, x + 17, y + 30);
+        }
+      }
+      canvas.refresh();
+
+      // Register as spritesheet
+      this.textures.get(key).add(0, 0, 0, 0, cols * fw, rows * fh);
+      // Add individual frames
+      for (let i = 0; i < cols * rows; i++) {
+        const fx = (i % cols) * fw;
+        const fy = Math.floor(i / cols) * fh;
+        this.textures.get(key).add(i, 0, fx, fy, fw, fh);
+      }
+    }
   }
 
   /**
@@ -274,7 +334,7 @@ export class BootScene extends Phaser.Scene {
   createAnimations() {
     const FRAMES_PER_ROW = 14;
     const characters = [
-      'warrior', 'priest', 'rogue', 'mage',
+      'warrior', 'priest', 'rogue', 'mage', 'warlock', 'hunter',
       'imp', 'hellknight', 'pitlord',
       'frozen_wraith', 'frozen_golem', 'frozen_giant',
       'forge_imp', 'forge_golem', 'forge_infernal',

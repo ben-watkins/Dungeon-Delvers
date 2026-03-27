@@ -47,21 +47,26 @@ export class MainMenuScene extends Phaser.Scene {
       fontSize: '10px', fontFamily: 'monospace', color: '#808098',
     }).setOrigin(0.5).setResolution(4);
 
-    // Class selection
+    // Class selection — 6 classes in two rows
     this.classes = [
       { key: 'warrior', name: 'WARRIOR', role: 'Tank', color: '#8898b8' },
       { key: 'priest', name: 'PRIEST', role: 'Healer', color: '#90a8d8' },
       { key: 'rogue', name: 'ROGUE', role: 'DPS', color: '#cc6666' },
       { key: 'mage', name: 'MAGE', role: 'Ranged DPS', color: '#aa66ff' },
+      { key: 'warlock', name: 'WARLOCK', role: 'DoT Caster', color: '#88cc44' },
+      { key: 'hunter', name: 'HUNTER', role: 'Ranged DPS', color: '#44bbaa' },
     ];
 
     this.selectedIndex = 0;
     this.classSlots = [];
 
     this.classes.forEach((cls, i) => {
-      const x = width * 0.25 + i * (width * 0.25);
-      const spriteY = height * 0.52;
-      const labelY = height * 0.64;
+      // Top row: 0-2, Bottom row: 3-5
+      const row = Math.floor(i / 3);
+      const col = i % 3;
+      const x = width * 0.25 + col * (width * 0.25);
+      const spriteY = height * 0.44 + row * 62;
+      const labelY = spriteY + 18;
 
       const sprite = this.add.sprite(x, spriteY, cls.key, 0);
       sprite.play(`${cls.key}_idle`);
@@ -84,36 +89,33 @@ export class MainMenuScene extends Phaser.Scene {
 
     this.updateSelection();
 
-    // Arrows
-    this.add.text(width * 0.25 - 36, height * 0.52, '<', {
-      fontSize: '14px', fontFamily: 'monospace', color: '#404060',
-    }).setOrigin(0.5).setResolution(4);
-    this.add.text(width * 0.75 + 36, height * 0.52, '>', {
-      fontSize: '14px', fontFamily: 'monospace', color: '#404060',
+    // Navigation hint
+    this.add.text(width / 2, height * 0.36, '[A/D] or [LEFT/RIGHT] to select', {
+      fontSize: '7px', fontFamily: 'monospace', color: '#505068',
     }).setOrigin(0.5).setResolution(4);
 
     // Dungeon selector
     this.dungeonKeys = Object.keys(DUNGEONS);
     this.dungeonIndex = 0;
-    this.dungeonText = this.add.text(width / 2, height * 0.73, this.getDungeonLabel(), {
+    this.dungeonText = this.add.text(width / 2, height * 0.78, this.getDungeonLabel(), {
       fontSize: '10px', fontFamily: 'monospace', color: '#60cc80',
     }).setOrigin(0.5).setResolution(4);
 
     // Keystone level
     this.keystoneLevel = 2;
-    this.keystoneText = this.add.text(width / 2, height * 0.80, `Keystone Level: +${this.keystoneLevel}   [UP/DOWN]`, {
+    this.keystoneText = this.add.text(width / 2, height * 0.84, `Keystone Level: +${this.keystoneLevel}   [UP/DOWN]`, {
       fontSize: '10px', fontFamily: 'monospace', color: '#d4b040',
     }).setOrigin(0.5).setResolution(4);
 
     // Mode buttons — Solo and Multiplayer
-    const soloBtn = this.add.text(width * 0.3, height * 0.90, '[ SOLO PLAY ]', {
+    const soloBtn = this.add.text(width * 0.3, height * 0.92, '[ SOLO PLAY ]', {
       fontSize: '10px', fontFamily: 'monospace', color: '#44cc44',
     }).setOrigin(0.5).setResolution(4).setInteractive({ useHandCursor: true });
     soloBtn.on('pointerdown', () => this.startSolo());
     soloBtn.on('pointerover', () => soloBtn.setColor('#88ff88'));
     soloBtn.on('pointerout', () => soloBtn.setColor('#44cc44'));
 
-    const mpBtn = this.add.text(width * 0.7, height * 0.90, '[ MULTIPLAYER ]', {
+    const mpBtn = this.add.text(width * 0.7, height * 0.92, '[ MULTIPLAYER ]', {
       fontSize: '10px', fontFamily: 'monospace', color: '#80d8ff',
     }).setOrigin(0.5).setResolution(4).setInteractive({ useHandCursor: true });
     mpBtn.on('pointerdown', () => this.showModeSelect());
@@ -495,7 +497,7 @@ export class MainMenuScene extends Phaser.Scene {
     if (!players) return;
 
     const classColors = {
-      warrior: '#8898b8', priest: '#90a8d8', rogue: '#cc6666', mage: '#aa66ff',
+      warrior: '#8898b8', priest: '#90a8d8', rogue: '#cc6666', mage: '#aa66ff', warlock: '#88cc44', hunter: '#44bbaa',
     };
 
     let i = 0;

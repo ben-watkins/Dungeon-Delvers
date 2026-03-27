@@ -42,6 +42,7 @@ export class Player extends Phaser.GameObjects.Container {
     this.defense = this.classData.stats.defense;
 
     // Combat state
+    this.dead = false;
     this.comboIndex = 0;
     this.comboTimer = 0;
     this.comboWindow = 500;  // ms to input next combo hit
@@ -448,6 +449,75 @@ export class Player extends Phaser.GameObjects.Container {
             this.scene.time.delayedCall(400, () => {
               if (this.fsm.is('special3')) { this.fsm.locked = false; this.fsm.transition('idle'); }
             });
+          } else if (this.classKey === 'warlock') {
+            // --- WARLOCK: Drain Life — channeled beam, heals for 50% of damage ---
+            this.sprite.play(`${this.classKey}_special1`, true);
+            this.scene.events.emit('playerAttack');
+
+            // Auto-face tab target
+            if (this.tabTarget && this.tabTarget.hp > 0) {
+              this.facingRight = this.tabTarget.x > this.x;
+              this.sprite.setFlipX(!this.facingRight);
+            }
+
+            const drainDuration = special.duration || 2000;
+            const drainInterval = special.tickInterval || 150;
+            const drainTicks = Math.floor(drainDuration / drainInterval);
+
+            for (let i = 0; i < drainTicks; i++) {
+              this.scene.time.delayedCall(i * drainInterval, () => {
+                if (this.dead || !this.scene) return;
+                const enemies = this.scene.getAliveEnemies();
+                if (enemies.length === 0) return;
+
+                let target = this.tabTarget;
+                if (!target || target.hp <= 0) {
+                  let minD = Infinity;
+                  for (const e of enemies) {
+                    const d = Phaser.Math.Distance.Between(this.x, this.groundY, e.x, e.groundY);
+                    if (d < minD) { minD = d; target = e; }
+                  }
+                }
+                if (!target || target.hp <= 0) return;
+
+                const dmg = (special.damagePerTick || 1.5) * this.power * 10;
+                target.takeDamage(dmg, { x: 0, y: 0 }, 80);
+                const healAmt = Math.round(dmg * (special.healPercent || 0.5));
+                this.hp = Math.min(this.maxHp, this.hp + healAmt);
+
+                this.scene.events.emit('warlockDrainLife', {
+                  source: this, target, damage: dmg, heal: healAmt, tick: i,
+                });
+              });
+            }
+
+            this.scene.time.delayedCall(drainDuration + 200, () => {
+              if (this.fsm.is('special3') && !this.dead) {
+                this.fsm.locked = false;
+                this.fsm.transition('idle');
+              }
+            });
+
+          } else if (this.classKey === 'hunter') {
+            // --- HUNTER: Disengage — leap backward ---
+            const dist = special.distance || 70;
+            const dir = this.facingRight ? -1 : 1; // Opposite of facing
+            this.sprite.play(`${this.classKey}_special1`, true);
+
+            this.scene.events.emit('hunterDisengage', { player: this });
+
+            this.x += dir * dist;
+            this.y = this.groundY;
+
+            this.sprite.once('animationcomplete', () => {
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            });
+            this.scene.time.delayedCall(400, () => {
+              if (this.fsm.is('special3')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+            });
+            return;
+
           } else {
             // --- WARRIOR: Heroic Leap ---
             let targetX = this.x + (this.facingRight ? 60 : -60);
@@ -472,8 +542,8 @@ export class Player extends Phaser.GameObjects.Container {
           }
         },
         update(dt) {
-          if (this.special3Class === 'mage') {
-            // Mage blink is instant — just wait for animation
+          if (this.special3Class === 'mage' || this.special3Class === 'warlock' || this.special3Class === 'hunter') {
+            // Blink/Drain Life/Disengage — handled in enter() via delayedCall or animationcomplete
             return;
           }
           if (this.special3Class === 'priest') {
@@ -696,6 +766,76 @@ export class Player extends Phaser.GameObjects.Container {
             });
             return;
 
+          } else if (this.classKey === 'warlock') {
+            // --- WARLOCK: Howl of Terror — AoE fear, enemies flee for 2.5s ---
+            this.sprite.play(`${this.classKey}_special1`, true);
+            this.scene.cameras.main.shake(80, 0.004);
+
+            const fearRadius = special.radius || 55;
+            const fearDuration = special.duration || 2500;
+            const enemies = this.scene.getAliveEnemies();
+
+            for (const enemy of enemies) {
+              const dist = Phaser.Math.Distance.Between(this.x, this.groundY, enemy.x, enemy.groundY);
+              if (dist <= fearRadius) {
+                if (enemy.applyFear) {
+                  enemy.applyFear(fearDuration);
+                } else if (enemy.applyStun) {
+                  enemy.applyStun(fearDuration, { x: 0, y: 0 });
+                }
+              }
+            }
+
+            this.scene.events.emit('warlockFear', { player: this, radius: fearRadius });
+
+            this.sprite.once('animationcomplete', () => {
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            });
+            this.scene.time.delayedCall(800, () => {
+              if (this.fsm.is('special4')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+            });
+            return;
+
+          } else if (this.classKey === 'hunter') {
+            // --- HUNTER: Freezing Trap — place trap, stuns first enemy to walk over it ---
+            this.sprite.play(`${this.classKey}_special1`, true);
+            const trapX = this.x;
+            const trapY = this.groundY;
+            const trapRadius = special.radius || 18;
+            const trapDuration = special.duration || 6000;
+            const stunDuration = special.stunDuration || 3000;
+            const checkInterval = 200;
+
+            this.scene.events.emit('hunterTrapPlace', { x: trapX, y: trapY, player: this });
+
+            let trapTriggered = false;
+            const checks = Math.floor(trapDuration / checkInterval);
+            for (let i = 0; i < checks; i++) {
+              this.scene.time.delayedCall(i * checkInterval, () => {
+                if (this.dead || !this.scene || trapTriggered) return;
+                const enemies = this.scene.getAliveEnemies();
+                for (const enemy of enemies) {
+                  const dist = Phaser.Math.Distance.Between(trapX, trapY, enemy.x, enemy.groundY);
+                  if (dist <= trapRadius) {
+                    trapTriggered = true;
+                    if (enemy.applyStun) enemy.applyStun(stunDuration, { x: 0, y: 0 });
+                    this.scene.events.emit('hunterTrapTrigger', { x: trapX, y: trapY, target: enemy });
+                    break;
+                  }
+                }
+              });
+            }
+
+            this.sprite.once('animationcomplete', () => {
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            });
+            this.scene.time.delayedCall(600, () => {
+              if (this.fsm.is('special4')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+            });
+            return;
+
           } else if (this.classKey === 'mage') {
             // --- MAGE: Frost Nova — instant AoE stun around caster ---
             this.sprite.play(`${this.classKey}_special1`, true);
@@ -755,7 +895,7 @@ export class Player extends Phaser.GameObjects.Container {
         },
         update(dt) {
           // Mage Frost Nova and Priest Penance have no update logic — handled in enter()
-          if (this.special4Class === 'mage' || this.special4Class === 'priest') return;
+          if (this.special4Class === 'mage' || this.special4Class === 'priest' || this.special4Class === 'warlock' || this.special4Class === 'hunter') return;
 
           const dx = this.chargeTargetX - this.x;
           const dy = this.chargeTargetY - this.groundY;
@@ -884,6 +1024,88 @@ export class Player extends Phaser.GameObjects.Container {
             return;
           }
 
+          if (this.classKey === 'warlock') {
+            // --- WARLOCK: Rain of Fire — channeled AoE damage at target position ---
+            this.isWarlockRain = true;
+            this.isHymnChannel = false;
+            this.isBeamChannel = false;
+            this.whirlwindSpecial = special;
+            this.whirlwindTickTimer = 0;
+            this.whirlwindDuration = 0;
+            this.whirlwindMaxDuration = special.duration || 4000;
+
+            // Target position: tab target or closest enemy
+            const enemies = this.scene.getAliveEnemies();
+            let rainTarget = this.tabTarget;
+            if (!rainTarget || rainTarget.hp <= 0) {
+              let minD = Infinity;
+              for (const e of enemies) {
+                const d = Phaser.Math.Distance.Between(this.x, this.groundY, e.x, e.groundY);
+                if (d < minD) { minD = d; rainTarget = e; }
+              }
+            }
+            this.rainTargetX = rainTarget ? rainTarget.x : this.x + (this.facingRight ? 60 : -60);
+            this.rainTargetY = rainTarget ? rainTarget.groundY : this.groundY;
+
+            this.sprite.play(`${this.classKey}_special1`, true);
+            this.sprite.anims.msPerFrame = 70;
+            this.sprite.setTint(0xff6633);
+
+            this.whirlwindGfx = this.scene.add.graphics();
+            this.whirlwindGfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+            this.whirlwindParticles = this.scene.add.particles(this.rainTargetX, this.rainTargetY, 'vfx_pixel', {
+              speed: { min: 15, max: 40 },
+              angle: { min: 250, max: 290 },
+              lifespan: 350,
+              tint: [0xff4400, 0xff8800, 0xffaa00],
+              alpha: { start: 0.8, end: 0 },
+              scale: { start: 0.8, end: 0.2 },
+              frequency: 30,
+              emitting: true,
+            });
+            this.whirlwindParticles.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+            this.scene.events.emit('playerAttack');
+            return;
+          }
+
+          if (this.classKey === 'hunter') {
+            // --- HUNTER: Rapid Fire — channeled rapid arrows at target ---
+            this.isRapidFire = true;
+            this.isHymnChannel = false;
+            this.isBeamChannel = false;
+            this.whirlwindSpecial = special;
+            this.whirlwindTickTimer = 0;
+            this.whirlwindDuration = 0;
+            this.whirlwindMaxDuration = special.duration || 3000;
+
+            if (this.tabTarget && this.tabTarget.hp > 0) {
+              this.facingRight = this.tabTarget.x > this.x;
+              this.sprite.setFlipX(!this.facingRight);
+            }
+
+            this.sprite.play(`${this.classKey}_atk1`, true);
+            this.sprite.anims.msPerFrame = 40;
+
+            this.whirlwindGfx = this.scene.add.graphics();
+            this.whirlwindGfx.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+            this.whirlwindParticles = this.scene.add.particles(this.x, this.groundY, 'vfx_pixel', {
+              speed: { min: 30, max: 60 },
+              angle: this.facingRight ? { min: -15, max: 15 } : { min: 165, max: 195 },
+              lifespan: 150,
+              tint: 0xaaddaa,
+              alpha: { start: 0.7, end: 0 },
+              frequency: 25,
+              emitting: true,
+            });
+            this.whirlwindParticles.setDepth(GAME_CONFIG.layers.foregroundDecor);
+
+            this.scene.events.emit('playerAttack');
+            return;
+          }
+
           // Auto-face tab target
           if (this.tabTarget && this.tabTarget.hp > 0) {
             this.facingRight = this.tabTarget.x > this.x;
@@ -895,6 +1117,8 @@ export class Player extends Phaser.GameObjects.Container {
           this.whirlwindDuration = 0;
           this.whirlwindMaxDuration = 5000; // 5 second max
           this.isHymnChannel = false;
+          this.isWarlockRain = false;
+          this.isRapidFire = false;
 
           // Play attack anim looping fast for spinning look
           this.sprite.play(`${this.classKey}_atk1`, true);
@@ -995,6 +1219,110 @@ export class Player extends Phaser.GameObjects.Container {
             if (!this.sprite.anims.isPlaying) {
               this.sprite.play(`${this.classKey}_special1`, true);
               this.sprite.anims.msPerFrame = 80;
+            }
+            return;
+          }
+
+          // ── WARLOCK: Rain of Fire channel ──
+          if (this.isWarlockRain) {
+            const special = this.whirlwindSpecial;
+            this.whirlwindDuration += dt;
+
+            if (!this.keys.special5.isDown || this.whirlwindDuration >= this.whirlwindMaxDuration) {
+              this.fsm.transition('idle');
+              return;
+            }
+            this.handleMovementInput(dt);
+
+            // Draw fire circle at target
+            if (this.whirlwindGfx) {
+              this.whirlwindGfx.clear();
+              const radius = special.radius || 35;
+              const flicker = Math.sin(this.whirlwindDuration * 0.01) * 3;
+              this.whirlwindGfx.lineStyle(2, 0xff4400, 0.6);
+              this.whirlwindGfx.strokeCircle(this.rainTargetX, this.rainTargetY, radius + flicker);
+              this.whirlwindGfx.fillStyle(0xff6600, 0.15);
+              this.whirlwindGfx.fillCircle(this.rainTargetX, this.rainTargetY, radius + flicker);
+            }
+            if (this.whirlwindParticles) {
+              this.whirlwindParticles.setPosition(this.rainTargetX, this.rainTargetY);
+            }
+
+            // Damage tick
+            this.whirlwindTickTimer += dt;
+            const tickInterval = special.tickInterval || 300;
+            if (this.whirlwindTickTimer >= tickInterval) {
+              this.whirlwindTickTimer -= tickInterval;
+              const radius = special.radius || 35;
+              const enemies = this.scene.getAliveEnemies();
+              for (const enemy of enemies) {
+                const dist = Phaser.Math.Distance.Between(this.rainTargetX, this.rainTargetY, enemy.x, enemy.groundY);
+                if (dist <= radius) {
+                  enemy.takeDamage(special.damagePerTick * this.power * 10, { x: 0, y: 0 }, 100);
+                }
+              }
+              this.scene.events.emit('warlockRainTick', { x: this.rainTargetX, y: this.rainTargetY });
+            }
+
+            if (!this.sprite.anims.isPlaying) {
+              this.sprite.play(`${this.classKey}_special1`, true);
+              this.sprite.anims.msPerFrame = 70;
+            }
+            return;
+          }
+
+          // ── HUNTER: Rapid Fire channel ──
+          if (this.isRapidFire) {
+            const special = this.whirlwindSpecial;
+            this.whirlwindDuration += dt;
+
+            if (!this.keys.special5.isDown || this.whirlwindDuration >= this.whirlwindMaxDuration) {
+              this.fsm.transition('idle');
+              return;
+            }
+            this.handleMovementInput(dt);
+
+            // Update particle position
+            if (this.whirlwindParticles) {
+              this.whirlwindParticles.setPosition(this.x, this.groundY - 12);
+            }
+
+            // Damage tick — rapid arrows at target
+            this.whirlwindTickTimer += dt;
+            const tickInterval = special.tickInterval || 100;
+            if (this.whirlwindTickTimer >= tickInterval) {
+              this.whirlwindTickTimer -= tickInterval;
+              const enemies = this.scene.getAliveEnemies();
+              if (enemies.length === 0) return;
+
+              let target = this.tabTarget;
+              if (!target || target.hp <= 0) {
+                let minD = Infinity;
+                for (const e of enemies) {
+                  const d = Phaser.Math.Distance.Between(this.x, this.groundY, e.x, e.groundY);
+                  if (d < minD) { minD = d; target = e; }
+                }
+              }
+              if (target && target.hp > 0) {
+                const dmg = special.damagePerTick * this.power * 10;
+                target.takeDamage(dmg, { x: 0, y: 0 }, 50);
+                this.scene.events.emit('hunterRapidFireTick', { source: this, target });
+
+                // Draw arrow line
+                if (this.whirlwindGfx) {
+                  this.whirlwindGfx.clear();
+                  this.whirlwindGfx.lineStyle(1, 0xaaddaa, 0.8);
+                  this.whirlwindGfx.beginPath();
+                  this.whirlwindGfx.moveTo(this.x + (this.facingRight ? 8 : -8), this.groundY - 14);
+                  this.whirlwindGfx.lineTo(target.x, target.groundY - 10);
+                  this.whirlwindGfx.strokePath();
+                }
+              }
+            }
+
+            if (!this.sprite.anims.isPlaying) {
+              this.sprite.play(`${this.classKey}_atk1`, true);
+              this.sprite.anims.msPerFrame = 40;
             }
             return;
           }
@@ -1149,6 +1477,15 @@ export class Player extends Phaser.GameObjects.Container {
             this.sprite.clearTint();
             this.isHymnChannel = false;
           }
+          // Warlock Rain of Fire cleanup
+          if (this.isWarlockRain) {
+            this.sprite.clearTint();
+            this.isWarlockRain = false;
+          }
+          // Hunter Rapid Fire cleanup
+          if (this.isRapidFire) {
+            this.isRapidFire = false;
+          }
         },
         transitions: { idle: 'idle', hitstun: 'hitstun', death: 'death' },
       },
@@ -1186,6 +1523,78 @@ export class Player extends Phaser.GameObjects.Container {
                   member.hp = Math.min(member.maxHp, member.hp + (special.healAmount || 8));
                   this.scene.events.emit('priestRadianceTick', { target: member, amount: special.healAmount || 8 });
                 }
+              });
+            }
+
+            this.sprite.once('animationcomplete', () => {
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            });
+            this.scene.time.delayedCall(800, () => {
+              if (this.fsm.is('special6')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+            });
+            return;
+          }
+
+          if (this.classKey === 'warlock') {
+            // --- WARLOCK: Summon Imp — temporary minion fires at enemies ---
+            this.sprite.play(`${this.classKey}_special1`, true);
+            const impDuration = special.impDuration || 8000;
+            const impInterval = special.impAttackRate || 800;
+            const impTicks = Math.floor(impDuration / impInterval);
+            const impX = this.x + (this.facingRight ? 20 : -20);
+            const impY = this.groundY;
+
+            this.scene.events.emit('warlockImpSpawn', { x: impX, y: impY, player: this });
+
+            for (let i = 0; i < impTicks; i++) {
+              this.scene.time.delayedCall(i * impInterval, () => {
+                if (this.dead || !this.scene) return;
+                const enemies = this.scene.getAliveEnemies();
+                if (enemies.length === 0) return;
+                const target = enemies[Phaser.Math.Between(0, enemies.length - 1)];
+                const dmg = (special.impDamage || 0.04) * this.power * 100;
+                target.takeDamage(dmg, { x: 0, y: 0 }, 80);
+                this.scene.events.emit('warlockImpAttack', { source: { x: impX, y: impY }, target, damage: dmg });
+              });
+            }
+
+            this.sprite.once('animationcomplete', () => {
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            });
+            this.scene.time.delayedCall(800, () => {
+              if (this.fsm.is('special6')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+            });
+            return;
+          }
+
+          if (this.classKey === 'hunter') {
+            // --- HUNTER: Call Pet — temporary wolf companion ---
+            this.sprite.play(`${this.classKey}_special1`, true);
+            const petDuration = special.petDuration || 10000;
+            const petInterval = special.petAttackRate || 600;
+            const petTicks = Math.floor(petDuration / petInterval);
+            const petX = this.x + (this.facingRight ? 15 : -15);
+            const petY = this.groundY;
+
+            this.scene.events.emit('hunterPetSpawn', { x: petX, y: petY, player: this });
+
+            for (let i = 0; i < petTicks; i++) {
+              this.scene.time.delayedCall(i * petInterval, () => {
+                if (this.dead || !this.scene) return;
+                const enemies = this.scene.getAliveEnemies();
+                if (enemies.length === 0) return;
+                let target = null;
+                let minD = Infinity;
+                for (const e of enemies) {
+                  const d = Phaser.Math.Distance.Between(this.x, this.groundY, e.x, e.groundY);
+                  if (d < minD) { minD = d; target = e; }
+                }
+                if (!target) return;
+                const dmg = (special.petDamage || 0.06) * this.power * 100;
+                target.takeDamage(dmg, { x: 0, y: 0 }, 60);
+                this.scene.events.emit('hunterPetAttack', { petX: this.x + (this.facingRight ? 15 : -15), petY: this.groundY, target, damage: dmg });
               });
             }
 
@@ -1308,6 +1717,75 @@ export class Player extends Phaser.GameObjects.Container {
             return;
           }
 
+          if (this.classKey === 'warlock') {
+            // --- WARLOCK: Shadowfury — AoE stun + damage around caster ---
+            this.sprite.play(`${this.classKey}_special2`, true);
+            this.scene.cameras.main.shake(120, 0.005);
+
+            const sfRadius = special.radius || 40;
+            const stunDuration = special.stunDuration || 2000;
+            const enemies = this.scene.getAliveEnemies();
+
+            for (const enemy of enemies) {
+              const dist = Phaser.Math.Distance.Between(this.x, this.groundY, enemy.x, enemy.groundY);
+              if (dist <= sfRadius) {
+                const dir = {
+                  x: (enemy.x - this.x) / (dist || 1) * 3,
+                  y: 0,
+                };
+                enemy.takeDamage(special.damage * this.power * 10, dir, 150);
+                if (enemy.applyStun) enemy.applyStun(stunDuration, dir);
+              }
+            }
+
+            this.scene.events.emit('warlockShadowfury', { player: this, radius: sfRadius });
+
+            this.sprite.once('animationcomplete', () => {
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            });
+            this.scene.time.delayedCall(800, () => {
+              if (this.fsm.is('special7')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+            });
+            return;
+          }
+
+          if (this.classKey === 'hunter') {
+            // --- HUNTER: Volley — rain of arrows with delays ---
+            this.sprite.play(`${this.classKey}_special2`, true);
+
+            const arrowCount = special.arrowCount || 10;
+            const arrowDelay = special.arrowDelay || 120;
+            const volleyRadius = special.radius || 30;
+
+            for (let i = 0; i < arrowCount; i++) {
+              this.scene.time.delayedCall(i * arrowDelay, () => {
+                if (this.dead || !this.scene) return;
+                const enemies = this.scene.getAliveEnemies();
+                if (enemies.length === 0) return;
+                const target = enemies[Phaser.Math.Between(0, enemies.length - 1)];
+                const ax = target.x + Phaser.Math.Between(-20, 20);
+                const ay = target.groundY + Phaser.Math.Between(-8, 8);
+
+                for (const enemy of enemies) {
+                  const dist = Phaser.Math.Distance.Between(ax, ay, enemy.x, enemy.groundY);
+                  if (dist <= volleyRadius) {
+                    enemy.takeDamage((special.damage || 2.0) * this.power * 10, { x: 0, y: 0 }, 100);
+                  }
+                }
+                this.scene.events.emit('hunterVolleyArrow', { x: ax, y: ay, index: i });
+              });
+            }
+
+            this.scene.time.delayedCall(arrowCount * arrowDelay + 300, () => {
+              if (this.fsm.is('special7') && !this.dead) {
+                this.fsm.locked = false;
+                this.fsm.transition('idle');
+              }
+            });
+            return;
+          }
+
           // --- MAGE: Chain Lightning ---
           this.sprite.play(`${this.classKey}_special2`, true);
 
@@ -1409,6 +1887,97 @@ export class Player extends Phaser.GameObjects.Container {
             });
             return;
           }
+          if (this.classKey === 'warlock') {
+            // --- WARLOCK: Immolate — DoT all enemies, then burst ---
+            this.fsm.locked = true;
+            this.sprite.play(`${this.classKey}_special2`, true);
+
+            const tickCount = special.dotTicks || 5;
+            const tickInterval = special.dotInterval || 400;
+            const dotDmg = special.dotDamage || 1.0;
+            const burstDmg = special.burstDamage || 5.0;
+
+            for (let i = 0; i < tickCount; i++) {
+              this.scene.time.delayedCall(i * tickInterval, () => {
+                if (this.dead || !this.scene) return;
+                const aliveEnemies = this.scene.getAliveEnemies();
+                for (const enemy of aliveEnemies) {
+                  enemy.takeDamage(dotDmg * this.power * 10, { x: 0, y: 0 }, 80);
+                  this.scene.events.emit('warlockImmolate', { enemy });
+                }
+              });
+            }
+
+            // Final burst after all ticks
+            this.scene.time.delayedCall(tickCount * tickInterval + 100, () => {
+              if (this.dead || !this.scene) return;
+              const aliveEnemies = this.scene.getAliveEnemies();
+              for (const enemy of aliveEnemies) {
+                const dmg = burstDmg * this.power * 10;
+                const dist = Phaser.Math.Distance.Between(this.x, this.groundY, enemy.x, enemy.groundY) || 1;
+                const dir = { x: (enemy.x - this.x) / dist * 5, y: 0 };
+                enemy.takeDamage(dmg, dir, 200);
+              }
+              this.scene.events.emit('warlockImmolateBurst', { enemies: aliveEnemies });
+              this.scene.cameras.main.shake(100, 0.004);
+            });
+
+            this.scene.time.delayedCall(tickCount * tickInterval + 400, () => {
+              if (this.fsm.is('special8') && !this.dead) {
+                this.fsm.locked = false;
+                this.fsm.transition('idle');
+              }
+            });
+            return;
+          }
+
+          if (this.classKey === 'hunter') {
+            // --- HUNTER: Kill Shot — execute, 3x damage if target below 30% HP ---
+            this.fsm.locked = true;
+            this.sprite.play(`${this.classKey}_special2`, true);
+
+            // Auto-face tab target
+            if (this.tabTarget && this.tabTarget.hp > 0) {
+              this.facingRight = this.tabTarget.x > this.x;
+              this.sprite.setFlipX(!this.facingRight);
+            }
+
+            this.scene.time.delayedCall(200, () => {
+              if (this.dead || !this.scene) return;
+              const enemies = this.scene.getAliveEnemies();
+              if (enemies.length === 0) return;
+
+              let target = this.tabTarget;
+              if (!target || target.hp <= 0) {
+                let minD = Infinity;
+                for (const e of enemies) {
+                  const d = Phaser.Math.Distance.Between(this.x, this.groundY, e.x, e.groundY);
+                  if (d < minD) { minD = d; target = e; }
+                }
+              }
+              if (!target || target.hp <= 0) return;
+
+              const isExecute = target.hp / target.maxHp < 0.3;
+              const multiplier = isExecute ? 3 : 1;
+              const dmg = special.damage * multiplier * this.power * 10;
+              const dir = { x: (target.x > this.x ? 1 : -1) * 6, y: 0 };
+              target.takeDamage(dmg, dir, 200);
+
+              this.scene.events.emit('hunterKillShot', {
+                source: this, target, damage: dmg, isExecute,
+              });
+            });
+
+            this.sprite.once('animationcomplete', () => {
+              this.fsm.locked = false;
+              this.fsm.transition('idle');
+            });
+            this.scene.time.delayedCall(800, () => {
+              if (this.fsm.is('special8')) { this.fsm.locked = false; this.fsm.transition('idle'); }
+            });
+            return;
+          }
+
           this.fsm.locked = true;
           this.sprite.play(`${this.classKey}_special1`, true);
 
@@ -1476,6 +2045,7 @@ export class Player extends Phaser.GameObjects.Container {
 
       death: {
         enter() {
+          this.dead = true;
           this.sprite.play(`${this.classKey}_death`, true);
           this.fsm.locked = true;
           this.scene.events.emit('playerDeath', this);
@@ -1592,7 +2162,7 @@ export class Player extends Phaser.GameObjects.Container {
     }
 
     // Never interrupt abilities or attacks — take damage but don't stagger
-    const currentState = this.fsm.currentState;
+    const currentState = this.fsm.currentStateName;
     if (currentState !== 'idle' && currentState !== 'walk') return;
 
     // Apply knockback and hitstun only when idle/walking

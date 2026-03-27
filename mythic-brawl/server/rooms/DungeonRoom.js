@@ -80,9 +80,11 @@ const CLASS_STATS = {
   priest: { hp: 90, speed: 86, power: 1.05, defense: 0.8 },
   rogue: { hp: 100, speed: 86, power: 8.0, defense: 0.9 },
   mage: { hp: 80, speed: 90, power: 6.0, defense: 0.7 },
+  warlock: { hp: 85, speed: 84, power: 5.5, defense: 0.75 },
+  hunter: { hp: 95, speed: 92, power: 5.0, defense: 0.85 },
 };
 
-const AVAILABLE_CLASSES = ['warrior', 'priest', 'rogue', 'mage'];
+const AVAILABLE_CLASSES = ['warrior', 'priest', 'rogue', 'mage', 'warlock', 'hunter'];
 
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
